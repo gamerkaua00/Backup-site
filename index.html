@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SmartVault - Backup Seguro</title>
+    
+    <!-- PWA: Meta Tags Essenciais -->
+    <meta name="theme-color" content="#0f172a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="SmartVault">
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/6409/6409867.png">
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Configuração do Tailwind -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    animation: {
+                        'fade-in': 'fadeIn 0.3s ease-out',
+                        'slide-in': 'slideIn 0.3s ease-out',
+                    },
+                    keyframes: {
+                        fadeIn: {
+                            '0%': { opacity: '0' },
+                            '100%': { opacity: '1' },
+                        },
+                        slideIn: {
+                            '0%': { transform: 'translateY(10px)', opacity: '0' },
+                            '100%': { transform: 'translateY(0)', opacity: '1' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Import Map -->
+    <script type="importmap">
+    {
+        "imports": {
+            "react": "https://esm.sh/react@18.2.0",
+            "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+            "lucide-react": "https://esm.sh/lucide-react@0.344.0",
+            "firebase/app": "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js",
+            "firebase/auth": "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js",
+            "firebase/firestore": "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js"
+        }
+    }
+    </script>
+
+    <!-- Babel -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <style>
+        body { margin: 0; background-color: #0f172a; color: #f1f5f9; }
+        /* Scrollbar suave */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        /* Previne zoom no input em iOS */
+        input, select, textarea { font-size: 16px !important; }
+    </style>
+
+    <!-- PWA Setup Script -->
+    <script>
+        const manifest = {
+            "name": "SmartVault Cloud",
+            "short_name": "SmartVault",
+            "start_url": ".",
+            "display": "standalone",
+            "background_color": "#0f172a",
+            "theme_color": "#0f172a",
+            "orientation": "portrait",
+            "icons": [
+                {
+                    "src": "https://cdn-icons-png.flaticon.com/512/6409/6409867.png",
+                    "sizes": "512x512",
+                    "type": "image/png"
+                }
+            ]
+        };
+        
+        try {
+            const manifestBlob = new Blob([JSON.stringify(manifest)], {type: 'application/json'});
+            const manifestURL = URL.createObjectURL(manifestBlob);
+            const link = document.createElement('link');
+            link.rel = 'manifest';
+            link.href = manifestURL;
+            document.head.appendChild(link);
+        } catch(e) { console.warn("Falha manifesto:", e); }
+
+        if ('serviceWorker' in navigator) {
+            const swCode = `
+                self.addEventListener('install', (e) => e.waitUntil(self.skipWaiting()));
+                self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
+                self.addEventListener('fetch', (e) => {
+                    e.respondWith(fetch(e.request).catch(() => new Response('Offline')));
+                });
+            `;
+            try {
+                const swBlob = new Blob([swCode], {type: 'application/javascript'});
+                const swUrl = URL.createObjectURL(swBlob);
+                navigator.serviceWorker.register(swUrl).catch(e => console.warn('SW Fail:', e.message));
+            } catch (e) { console.warn('PWA Setup Error:', e); }
+        }
+    </script>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+        import React, { useState, useEffect, useMemo } from 'react';
+        import { createRoot } from 'react-dom/client';
+        import { 
+            Camera, Video, Image as ImageIcon, Grid, List, Upload, Trash2, 
+            Search, FolderOpen, Star, Cloud, Wifi, X, Briefcase, BookOpen, 
+            FileText, Smile, Plane, Smartphone, Lock, DownloadCloud, AlertTriangle, 
+            Settings, ShieldCheck, Copy, Plus, LogOut, UploadCloud, PieChart, FolderPlus, 
+            Server, Menu, User, Mail, Key
+        } from 'lucide-react';
+        import { initializeApp } from 'firebase/app';
+        import { 
+            getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken, 
+            signOut, GoogleAuthProvider, signInWithPopup, createUserWithEmailAndPassword, 
+            signInWithEmailAndPassword 
+        } from 'firebase/auth';
+        import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc, query, orderBy, serverTimestamp, setDoc, getDoc } from 'firebase/firestore';
+
+        // --- CONFIGURAÇÃO DO FIREBASE ---
+        const manualConfig = {
+            apiKey: "AIzaSyBCkh9J-RqQaM7nHxNbJjbs74TwrMh-E6s",
+            authDomain: "whatsapp-20-153cc.firebaseapp.com",
+            projectId: "whatsapp-20-153cc",
+            storageBucket: "whatsapp-20-153cc.firebasestorage.app",
+            messagingSenderId: "807771374000",
+            appId: "1:807771374000:web:ef66edfc92a8e5ee7c5675"
+        };
+
+        const envConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const usingManualConfig = !!manualConfig.apiKey;
+        const firebaseConfig = usingManualConfig ? manualConfig : envConfig;
+        const hasConfig = Object.keys(firebaseConfig).length > 0;
+        
+        const app = hasConfig ? initializeApp(firebaseConfig) : null;
+        const auth = app ? getAuth(app) : null;
+        const db = app ? getFirestore(app) : null;
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+        // --- CONFIGURAÇÃO DE ARMAZENAMENTO (Virtualmente Ilimitado) ---
+        const MAX_STORAGE_BYTES = 1024 * 1024 * 1024 * 1024 * 1024; // 1 PB
+
+        function App() {
+            // --- Estados ---
+            const [user, setUser] = useState(null);
+            const [authMode, setAuthMode] = useState('login'); // 'login' | 'register'
+            const [email, setEmail] = useState('');
+            const [password, setPassword] = useState('');
+            const [loadingAuth, setLoadingAuth] = useState(false);
+            
+            const [mediaItems, setMediaItems] = useState([]);
+            const [customFolders, setCustomFolders] = useState([]);
+            const [viewMode, setViewMode] = useState('grid');
+            const [activeFilter, setActiveFilter] = useState('all');
+            const [searchQuery, setSearchQuery] = useState('');
+            const [isDragging, setIsDragging] = useState(false);
+            const [selectedItem, setSelectedItem] = useState(null);
+            const [uploading, setUploading] = useState(false);
+            const [notification, setNotification] = useState(null);
+            const [storageUsage, setStorageUsage] = useState(0);
+            const [installPrompt, setInstallPrompt] = useState(null);
+            const [configError, setConfigError] = useState(!hasConfig);
+            const [permissionError, setPermissionError] = useState(false);
+            const [showNewFolderModal, setShowNewFolderModal] = useState(false);
+            const [newFolderName, setNewFolderName] = useState('');
+            const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Mobile Menu
+
+            // --- PWA Install Handler ---
+            useEffect(() => {
+                const handler = (e) => { e.preventDefault(); setInstallPrompt(e); };
+                window.addEventListener('beforeinstallprompt', handler);
+                return () => window.removeEventListener('beforeinstallprompt', handler);
+            }, []);
+
+            const handleInstallClick = () => {
+                if (!installPrompt) return;
+                installPrompt.prompt();
+                installPrompt.userChoice.then((r) => { if (r.outcome === 'accepted') setInstallPrompt(null); });
+            };
+
+            // --- 1. Monitoramento de Auth ---
+            useEffect(() => {
+                if (!auth) { setConfigError(true); return; }
+                const unsubscribe = onAuthStateChanged(auth, setUser);
+                return () => unsubscribe();
+            }, []);
+
+            // --- Ações de Login ---
+            const handleGoogleLogin = async () => {
+                setLoadingAuth(true);
+                try {
+                    const provider = new GoogleAuthProvider();
+                    await signInWithPopup(auth, provider);
+                    showNotification("Conectado com Google!");
+                } catch (error) {
+                    console.error(error);
+                    showNotification("Erro no login Google.", "error");
+                } finally {
+                    setLoadingAuth(false);
+                }
+            };
+
+            const handleEmailAuth = async (e) => {
+                e.preventDefault();
+                setLoadingAuth(true);
+                try {
+                    if (authMode === 'login') {
+                        await signInWithEmailAndPassword(auth, email, password);
+                        showNotification("Bem-vindo de volta!");
+                    } else {
+                        await createUserWithEmailAndPassword(auth, email, password);
+                        showNotification("Conta criada com sucesso!");
+                    }
+                } catch (error) {
+                    console.error(error);
+                    let msg = "Erro na autenticação.";
+                    if(error.code === 'auth/weak-password') msg = "Senha muito fraca (min 6 caracteres).";
+                    else if(error.code === 'auth/email-already-in-use') msg = "E-mail já cadastrado.";
+                    else if(error.code === 'auth/invalid-credential') msg = "E-mail ou senha incorretos.";
+                    showNotification(msg, "error");
+                } finally {
+                    setLoadingAuth(false);
+                }
+            };
+
+            const handleAnonymousLogin = async () => {
+                setLoadingAuth(true);
+                try {
+                    await signInAnonymously(auth);
+                    showNotification("Modo Visitante ativado.");
+                } catch (error) {
+                    console.error(error);
+                    showNotification("Erro no login anônimo.", "error");
+                } finally {
+                    setLoadingAuth(false);
+                }
+            };
+
+            // --- 2. Sincronização de Dados ---
+            useEffect(() => {
+                if (!user || !db) return;
+
+                const userMediaRef = collection(db, 'artifacts', appId, 'users', user.uid, 'media');
+                const q = query(userMediaRef, orderBy('createdAt', 'desc'));
+
+                const unsubMedia = onSnapshot(q, (snapshot) => {
+                    const items = snapshot.docs.map(doc => ({ 
+                        id: doc.id, 
+                        ...doc.data(),
+                        date: doc.data().createdAt?.toDate ? doc.data().createdAt.toDate().toLocaleDateString('pt-BR') : new Date().toLocaleDateString('pt-BR')
+                    }));
+                    setMediaItems(items);
+                    const totalSize = items.reduce((acc, item) => acc + (item.size || 0), 0);
+                    setStorageUsage(totalSize);
+                    setPermissionError(false);
+                }, (error) => {
+                    if (error.code === 'permission-denied') setPermissionError(true);
+                    else console.error("Firestore Error:", error);
+                });
+
+                const settingsRef = doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'config');
+                getDoc(settingsRef).then(snap => {
+                    if (snap.exists() && snap.data().folders) setCustomFolders(snap.data().folders);
+                });
+
+                return () => unsubMedia();
+            }, [user]);
+
+            // --- Helpers e Lógica ---
+            const showNotification = (msg, type = 'success') => {
+                setNotification({ msg, type });
+                setTimeout(() => setNotification(null), 4000);
+            };
+
+            const formatBytes = (bytes, decimals = 2) => {
+                if (!+bytes) return '0 Bytes';
+                const k = 1024;
+                const dm = decimals < 0 ? 0 : decimals;
+                const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB'];
+                const i = Math.floor(Math.log(bytes) / Math.log(k));
+                return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+            };
+
+            const compressImage = (file) => new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.src = e.target.result;
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        const MAX = 1200;
+                        let w = img.width, h = img.height;
+                        if (w > h) { if (w > MAX) { h *= MAX/w; w = MAX; } }
+                        else { if (h > MAX) { w *= MAX/h; h = MAX; } }
+                        canvas.width = w; canvas.height = h;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, w, h);
+                        resolve(canvas.toDataURL('image/jpeg', 0.8));
+                    };
+                };
+            });
+
+            const handleFileUpload = async (e) => {
+                const files = Array.from((e.target.files || e.dataTransfer.files));
+                if (files.length === 0 || !user) return;
+                setUploading(true);
+                const userMediaRef = collection(db, 'artifacts', appId, 'users', user.uid, 'media');
+                let successCount = 0;
+
+                for (const file of files) {
+                    try {
+                        const type = file.type.startsWith('image/') ? 'image' : 'video';
+                        if (type === 'video' && file.size > 5 * 1024 * 1024) { // 5MB limit check visual
+                             showNotification(`Vídeo ${file.name} grande demais p/ demo`, "error");
+                             continue; 
+                        }
+                        
+                        let finalUrl = await (type === 'image' ? compressImage(file) : new Promise(r => {
+                            const reader = new FileReader();
+                            reader.onloadend = () => r(reader.result);
+                            reader.readAsDataURL(file);
+                        }));
+
+                        // Auto-tag simples
+                        let cat = 'general';
+                        const n = file.name.toLowerCase();
+                        if (n.includes('print')) cat = 'screenshot';
+                        else if (n.includes('doc')) cat = 'work';
+                        
+                        await addDoc(userMediaRef, {
+                            name: file.name, url: finalUrl, type, size: file.size,
+                            category: cat, tags: [], favorite: false, createdAt: serverTimestamp()
+                        });
+                        successCount++;
+                    } catch (e) { console.error(e); }
+                }
+                setUploading(false);
+                setIsDragging(false);
+                if(successCount > 0) showNotification(`${successCount} arquivos enviados!`);
+            };
+
+            const handleLogout = async () => {
+                if(confirm("Deseja realmente sair?")) {
+                    await signOut(auth);
+                    setUser(null);
+                }
+            };
+
+            const handleCreateFolder = async () => {
+                if(!newFolderName.trim()) return;
+                const updated = [...customFolders, newFolderName.trim()];
+                setCustomFolders(updated);
+                setNewFolderName('');
+                setShowNewFolderModal(false);
+                await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'config'), { folders: updated }, { merge: true });
+            };
+
+            // Filtros
+            const filteredItems = useMemo(() => mediaItems.filter(i => {
+                const search = i.name.toLowerCase().includes(searchQuery.toLowerCase());
+                if (activeFilter === 'photos') return search && i.type === 'image';
+                if (activeFilter === 'videos') return search && i.type === 'video';
+                if (activeFilter === 'favorites') return search && i.favorite;
+                if (activeFilter !== 'all') return search && i.category === activeFilter;
+                return search;
+            }), [mediaItems, activeFilter, searchQuery]);
+
+            // --- TELA DE LOGIN ---
+            if (!user) {
+                return (
+                    <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4 relative overflow-hidden">
+                        {/* Background Effect */}
+                        <div className="absolute top-0 left-0 w-full h-full overflow-hidden z-0">
+                            <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-600/20 rounded-full blur-[100px]"></div>
+                            <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-purple-600/20 rounded-full blur-[100px]"></div>
+                        </div>
+
+                        {notification && (
+                            <div className={`fixed top-4 z-[60] px-4 py-2 rounded-lg shadow-lg border animate-bounce ${notification.type === 'error' ? 'bg-red-500/90 border-red-400' : 'bg-green-600/90 border-green-400'} text-white`}>
+                                {notification.msg}
+                            </div>
+                        )}
+
+                        <div className="bg-slate-800/80 backdrop-blur-md p-8 rounded-2xl shadow-2xl w-full max-w-md border border-slate-700 z-10 animate-fade-in">
+                            <div className="text-center mb-8">
+                                <div className="inline-flex p-3 bg-blue-600 rounded-xl mb-4 shadow-lg shadow-blue-500/30">
+                                    <Cloud size={40} className="text-white" />
+                                </div>
+                                <h1 className="text-3xl font-bold text-white mb-2">SmartVault</h1>
+                                <p className="text-slate-400">Suas memórias, seguras na nuvem.</p>
+                            </div>
+
+                            <button onClick={handleGoogleLogin} disabled={loadingAuth} className="w-full bg-white hover:bg-slate-100 text-slate-900 font-semibold py-3 px-4 rounded-xl flex items-center justify-center gap-3 transition-transform active:scale-95 mb-6">
+                                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-5 h-5" alt="G" />
+                                {loadingAuth ? 'Conectando...' : 'Entrar com Google'}
+                            </button>
+
+                            <div className="relative mb-6">
+                                <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-700"></div></div>
+                                <div className="relative flex justify-center text-sm"><span className="px-2 bg-slate-800 text-slate-500">ou use e-mail</span></div>
+                            </div>
+
+                            <form onSubmit={handleEmailAuth} className="space-y-4">
+                                <div className="relative">
+                                    <Mail className="absolute left-3 top-3.5 text-slate-500" size={18} />
+                                    <input 
+                                        type="email" placeholder="Seu e-mail" required
+                                        className="w-full bg-slate-900/50 border border-slate-700 rounded-lg py-3 pl-10 pr-4 text-white focus:outline-none focus:border-blue-500"
+                                        value={email} onChange={e => setEmail(e.target.value)}
+                                    />
+                                </div>
+                                <div className="relative">
+                                    <Key className="absolute left-3 top-3.5 text-slate-500" size={18} />
+                                    <input 
+                                        type="password" placeholder="Sua senha" required minLength={6}
+                                        className="w-full bg-slate-900/50 border border-slate-700 rounded-lg py-3 pl-10 pr-4 text-white focus:outline-none focus:border-blue-500"
+                                        value={password} onChange={e => setPassword(e.target.value)}
+                                    />
+                                </div>
+                                <button type="submit" disabled={loadingAuth} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-xl transition-colors shadow-lg shadow-blue-900/20">
+                                    {loadingAuth ? 'Processando...' : (authMode === 'login' ? 'Entrar' : 'Criar Conta')}
+                                </button>
+                            </form>
+
+                            <div className="mt-4 text-center flex justify-between text-sm">
+                                <button onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')} className="text-blue-400 hover:text-blue-300">
+                                    {authMode === 'login' ? 'Não tem conta? Cadastre-se' : 'Já tem conta? Entre'}
+                                </button>
+                            </div>
+                            
+                            <button onClick={handleAnonymousLogin} className="w-full mt-6 text-xs text-slate-500 hover:text-slate-300 underline">
+                                Continuar como visitante (dados não salvos permanentemente)
+                            </button>
+                        </div>
+                    </div>
+                );
+            }
+
+            if (permissionError) return <PermissionErrorScreen />;
+
+            // --- APP PRINCIPAL ---
+            return (
+                <div className="flex h-screen bg-slate-900 text-slate-100 font-sans overflow-hidden"
+                     onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                     onDragLeave={(e) => { e.preventDefault(); setIsDragging(false); }}
+                     onDrop={(e) => { e.preventDefault(); handleFileUpload(e); }}>
+                    
+                    {/* Toast */}
+                    {notification && (
+                        <div className={`fixed top-4 right-4 z-[70] px-4 py-2 rounded-lg shadow-lg border animate-bounce ${notification.type === 'error' ? 'bg-red-500/90 border-red-400' : 'bg-green-600/90 border-green-400'}`}>
+                            {notification.msg}
+                        </div>
+                    )}
+
+                    {/* Drag Overlay */}
+                    {isDragging && (
+                        <div className="absolute inset-0 z-[60] bg-blue-500/30 backdrop-blur-sm flex items-center justify-center border-4 border-blue-500 border-dashed m-4 rounded-xl">
+                            <div className="text-center text-white font-bold text-2xl animate-pulse">Solte para Upload</div>
+                        </div>
+                    )}
+
+                    {/* Mobile Sidebar Overlay */}
+                    {isSidebarOpen && (
+                        <div className="fixed inset-0 bg-black/60 z-40 md:hidden backdrop-blur-sm" onClick={() => setIsSidebarOpen(false)}></div>
+                    )}
+
+                    {/* Sidebar (Responsive) */}
+                    <aside className={`fixed md:relative z-50 h-full w-72 md:w-64 bg-slate-800 border-r border-slate-700 flex flex-col transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
+                        <div className="p-6 flex items-center gap-3">
+                            <div className="p-2 bg-blue-600 rounded-lg"><Cloud className="text-white" size={24} /></div>
+                            <div>
+                                <h1 className="font-bold text-lg leading-none">SmartVault</h1>
+                                <span className="text-[10px] text-blue-400 font-semibold tracking-wider">CLOUD EDITION</span>
+                            </div>
+                            <button onClick={() => setIsSidebarOpen(false)} className="md:hidden ml-auto text-slate-400"><X size={24}/></button>
+                        </div>
+
+                        {/* User Info */}
+                        <div className="px-6 mb-4">
+                            <div className="flex items-center gap-2 text-xs px-3 py-2 rounded border border-slate-600 bg-slate-700/50">
+                                {user.isAnonymous ? <User size={12} /> : <div className="w-2 h-2 rounded-full bg-green-500"></div>}
+                                <span className="truncate flex-1">{user.email || 'Visitante'}</span>
+                            </div>
+                        </div>
+
+                        {/* Storage Bar */}
+                        <div className="px-6 mb-6">
+                            <div className="flex justify-between text-[10px] text-slate-400 mb-1">
+                                <span>Uso (Simulado)</span>
+                                <span>{formatBytes(storageUsage)} / 1PB</span>
+                            </div>
+                            <div className="w-full h-1.5 bg-slate-900 rounded-full overflow-hidden">
+                                <div className="h-full bg-blue-500" style={{ width: `${Math.min(100, (storageUsage/MAX_STORAGE_BYTES)*100)}%` }}></div>
+                            </div>
+                        </div>
+
+                        {/* Nav */}
+                        <nav className="flex-1 px-4 py-2 space-y-1 overflow-y-auto">
+                            <SidebarItem icon={<Grid size={18} />} label="Galeria" active={activeFilter === 'all'} onClick={() => {setActiveFilter('all'); setIsSidebarOpen(false);}} />
+                            <SidebarItem icon={<ImageIcon size={18} />} label="Fotos" active={activeFilter === 'photos'} onClick={() => {setActiveFilter('photos'); setIsSidebarOpen(false);}} />
+                            <SidebarItem icon={<Video size={18} />} label="Vídeos" active={activeFilter === 'videos'} onClick={() => {setActiveFilter('videos'); setIsSidebarOpen(false);}} />
+                            
+                            <div className="flex items-center justify-between px-3 mt-6 mb-2">
+                                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Pastas</p>
+                                <button onClick={() => setShowNewFolderModal(true)} className="text-slate-500 hover:text-white"><Plus size={14}/></button>
+                            </div>
+                            
+                            <SidebarItem icon={<Briefcase size={18} />} label="Trabalho" active={activeFilter === 'work'} onClick={() => {setActiveFilter('work'); setIsSidebarOpen(false);}} />
+                            <SidebarItem icon={<Plane size={18} />} label="Viagens" active={activeFilter === 'travel'} onClick={() => {setActiveFilter('travel'); setIsSidebarOpen(false);}} />
+                            {customFolders.map(folder => (
+                                <SidebarItem key={folder} icon={<FolderOpen size={18} />} label={folder} active={activeFilter === folder} onClick={() => {setActiveFilter(folder); setIsSidebarOpen(false);}} />
+                            ))}
+                        </nav>
+                        
+                        <div className="p-4 bg-slate-900 border-t border-slate-700 space-y-2">
+                            {installPrompt && (
+                                <button onClick={handleInstallClick} className="w-full flex items-center justify-center gap-2 p-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-xs">
+                                    <DownloadCloud size={14} /> Instalar App
+                                </button>
+                            )}
+                            <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 p-2 text-red-400 hover:bg-red-900/20 rounded text-xs transition-colors">
+                                <LogOut size={14} /> Sair
+                            </button>
+                        </div>
+                    </aside>
+
+                    {/* Main Area */}
+                    <main className="flex-1 flex flex-col min-w-0 h-full relative">
+                        <header className="h-16 border-b border-slate-700 flex items-center justify-between px-4 md:px-6 bg-slate-800/80 backdrop-blur-md z-30 sticky top-0">
+                            <div className="flex items-center gap-3 flex-1">
+                                <button onClick={() => setIsSidebarOpen(true)} className="md:hidden p-2 text-slate-300 hover:bg-slate-700 rounded-lg">
+                                    <Menu size={20} />
+                                </button>
+                                <div className="relative group w-full max-w-md">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                                    <input 
+                                        type="text" placeholder="Buscar..." 
+                                        className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-9 pr-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition-all"
+                                        value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-3 ml-2">
+                                <div className="hidden sm:flex bg-slate-700 rounded-lg p-1">
+                                    <button className={`p-1.5 rounded ${viewMode==='grid'?'bg-slate-600 shadow':''}`} onClick={()=>setViewMode('grid')}><Grid size={16}/></button>
+                                    <button className={`p-1.5 rounded ${viewMode==='list'?'bg-slate-600 shadow':''}`} onClick={()=>setViewMode('list')}><List size={16}/></button>
+                                </div>
+                                <label className={`flex items-center gap-2 px-3 py-2 sm:px-4 sm:py-2 rounded-lg cursor-pointer transition-all ${uploading ? 'bg-slate-600 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-900/20 active:scale-95'}`}>
+                                    {uploading ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <Upload size={18} className="text-white" />}
+                                    <span className="text-sm font-medium text-white hidden sm:inline">Upload</span>
+                                    <input type="file" multiple className="hidden" onChange={handleFileUpload} disabled={uploading} accept="image/*,video/*" />
+                                </label>
+                            </div>
+                        </header>
+
+                        <div className="flex-1 overflow-y-auto p-4 md:p-6 scrollbar-hide pb-20">
+                            {mediaItems.length === 0 ? (
+                                <div className="h-full flex flex-col items-center justify-center text-slate-500 animate-fade-in">
+                                    <div className="p-4 bg-slate-800 rounded-full mb-4"><Cloud size={48} className="opacity-50 text-blue-500" /></div>
+                                    <p className="text-lg">Sua nuvem está vazia.</p>
+                                    <p className="text-sm opacity-60">Faça upload para começar.</p>
+                                </div>
+                            ) : (
+                                <>
+                                    <div className="mb-4 flex justify-between items-end">
+                                        <h2 className="text-xl font-bold text-slate-200 capitalize tracking-tight">{activeFilter === 'all' ? 'Galeria' : activeFilter}</h2>
+                                        <span className="text-xs text-slate-500 font-mono">{filteredItems.length} ARQUIVOS</span>
+                                    </div>
+                                    
+                                    {viewMode === 'grid' ? (
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:gap-4">
+                                            {filteredItems.map(item => (
+                                                <div key={item.id} onClick={() => setSelectedItem(item)} className="group relative bg-slate-800 rounded-xl overflow-hidden aspect-square cursor-pointer shadow-md hover:shadow-xl transition-all hover:-translate-y-1">
+                                                    {item.type === 'image' ? <img src={item.url} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center bg-slate-900"><Video size={32} className="text-slate-600"/></div>}
+                                                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-3">
+                                                        <p className="text-white text-xs font-medium truncate">{item.name}</p>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-2">
+                                            {filteredItems.map(item => (
+                                                <div key={item.id} onClick={() => setSelectedItem(item)} className="flex items-center gap-4 p-3 bg-slate-800/50 hover:bg-slate-800 rounded-lg border border-transparent hover:border-slate-700 cursor-pointer transition-colors">
+                                                    <div className="w-12 h-12 rounded-lg bg-slate-900 overflow-hidden flex-shrink-0">
+                                                        {item.type === 'image' ? <img src={item.url} className="w-full h-full object-cover" /> : <div className="flex items-center justify-center h-full"><Video size={20} className="text-slate-500"/></div>}
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-sm font-medium text-white truncate">{item.name}</p>
+                                                        <p className="text-xs text-slate-500">{item.date} • {formatBytes(item.size)}</p>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </>
+                            )}
+                        </div>
+                    </main>
+
+                    {/* New Folder Modal */}
+                    {showNewFolderModal && (
+                        <div className="fixed inset-0 z-[100] bg-black/60 flex items-center justify-center backdrop-blur-sm p-4 animate-fade-in">
+                            <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-2xl w-full max-w-sm">
+                                <h3 className="text-lg font-bold text-white mb-4">Nova Pasta</h3>
+                                <input 
+                                    autoFocus
+                                    className="w-full bg-slate-900 border border-slate-600 rounded-xl p-3 text-white text-sm mb-4 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
+                                    placeholder="Nome da pasta..."
+                                    value={newFolderName}
+                                    onChange={(e) => setNewFolderName(e.target.value)}
+                                    onKeyDown={(e) => e.key === 'Enter' && handleCreateFolder()}
+                                />
+                                <div className="flex justify-end gap-3">
+                                    <button onClick={() => setShowNewFolderModal(false)} className="px-4 py-2 text-sm text-slate-400 hover:text-white transition-colors">Cancelar</button>
+                                    <button onClick={handleCreateFolder} className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium shadow-lg shadow-blue-900/30">Criar</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Lightbox */}
+                    {selectedItem && (
+                        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-md animate-fade-in">
+                            <button className="absolute top-4 right-4 p-2 text-white/50 hover:text-white bg-white/10 rounded-full hover:bg-white/20 transition-all z-10" onClick={() => setSelectedItem(null)}><X size={24}/></button>
+                            
+                            <div className="w-full h-full flex flex-col items-center justify-center p-4">
+                                <div className="relative max-w-5xl w-full max-h-[80vh] flex items-center justify-center">
+                                    {selectedItem.type === 'image' ? (
+                                        <img src={selectedItem.url} className="max-w-full max-h-full object-contain rounded-lg shadow-2xl" />
+                                    ) : (
+                                        <video src={selectedItem.url} controls autoPlay className="max-w-full max-h-full rounded-lg shadow-2xl" />
+                                    )}
+                                </div>
+                                
+                                <div className="mt-6 text-center">
+                                    <h3 className="text-white text-lg font-medium mb-1">{selectedItem.name}</h3>
+                                    <div className="flex items-center justify-center gap-3">
+                                        <span className="px-2 py-0.5 bg-slate-800 border border-slate-700 rounded text-xs text-slate-300">{selectedItem.category}</span>
+                                        <button onClick={() => {
+                                            if(confirm("Baixar arquivo?")) {
+                                                const a = document.createElement('a');
+                                                a.href = selectedItem.url;
+                                                a.download = selectedItem.name;
+                                                a.click();
+                                            }
+                                        }} className="text-blue-400 hover:text-blue-300 text-sm flex items-center gap-1"><DownloadCloud size={14}/> Baixar</button>
+                                        <button onClick={() => {
+                                            if(confirm("Excluir permanentemente?")) {
+                                                deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'media', selectedItem.id));
+                                                setSelectedItem(null);
+                                                showNotification("Arquivo excluído.");
+                                            }
+                                        }} className="text-red-400 hover:text-red-300 text-sm flex items-center gap-1"><Trash2 size={14}/> Excluir</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        function SidebarItem({ icon, label, active, onClick }) {
+            return (
+                <button onClick={onClick} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg mb-1 transition-all ${active ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'}`}>
+                    {React.cloneElement(icon, { size: 18, className: active ? 'text-white' : '' })}
+                    <span className="text-sm font-medium truncate text-left flex-1">{label}</span>
+                </button>
+            );
+        }
+
+        function PermissionErrorScreen() {
+            const rules = `rules_version = '2';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    match /{document=**} {\n      allow read, write: if request.auth != null;\n    }\n  }\n}`;
+            return (
+                <div className="h-screen bg-slate-900 flex items-center justify-center p-4">
+                    <div className="bg-slate-800 p-8 rounded-2xl max-w-lg border border-yellow-500/30 w-full">
+                        <ShieldCheck className="mx-auto text-yellow-500 mb-4" size={48} />
+                        <h2 className="text-xl font-bold text-white text-center mb-2">Acesso Bloqueado</h2>
+                        <p className="text-slate-400 text-sm text-center mb-4">Cole estas regras no Console do Firebase:</p>
+                        <div className="bg-black/50 p-4 rounded-xl text-green-400 font-mono text-xs overflow-x-auto relative group border border-slate-700">
+                            <pre>{rules}</pre>
+                            <button onClick={()=>navigator.clipboard.writeText(rules)} className="absolute top-2 right-2 bg-slate-700 p-1.5 rounded hover:bg-slate-600 text-white transition-colors"><Copy size={14}/></button>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        const root = createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
