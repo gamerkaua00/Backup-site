@@ -42,7 +42,7 @@
         }
     </script>
 
-    <!-- Import Map -->
+    <!-- Import Map (Sem Storage, apenas Auth e Firestore) -->
     <script type="importmap">
     {
         "imports": {
@@ -128,7 +128,7 @@
             Search, FolderOpen, Star, Cloud, Wifi, X, Briefcase, BookOpen, 
             FileText, Smile, Plane, Smartphone, Lock, DownloadCloud, AlertTriangle, 
             Settings, ShieldCheck, Copy, Plus, LogOut, UploadCloud, PieChart, FolderPlus, 
-            Server, Menu, User, Mail, Key
+            Server, Menu, User, Mail, Key, HardDrive
         } from 'lucide-react';
         import { initializeApp } from 'firebase/app';
         import { 
@@ -156,10 +156,11 @@
         const app = hasConfig ? initializeApp(firebaseConfig) : null;
         const auth = app ? getAuth(app) : null;
         const db = app ? getFirestore(app) : null;
+        // Storage removido para evitar cobranças/config complexa
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
         // --- CONFIGURAÇÃO DE ARMAZENAMENTO (Virtualmente Ilimitado) ---
-        const MAX_STORAGE_BYTES = 1024 * 1024 * 1024 * 1024 * 1024; // 1 PB
+        const MAX_STORAGE_BYTES = 1000 * 1024 * 1024 * 1024 * 1024; // 1 PB
 
         function App() {
             // --- Estados ---
@@ -214,8 +215,22 @@
                     await signInWithPopup(auth, provider);
                     showNotification("Conectado com Google!");
                 } catch (error) {
-                    console.error(error);
-                    showNotification("Erro no login Google.", "error");
+                    console.error("Google Auth Error:", error);
+                    let msg = "Erro no login Google.";
+                    
+                    if (error.code === 'auth/operation-not-allowed') {
+                        alert("AÇÃO NECESSÁRIA: O Login com Google não está ativado.\n\n1. Vá no Console do Firebase.\n2. Clique em Authentication > Sign-in method.\n3. Ative o provedor 'Google'.");
+                        msg = "Ative o Google no Console do Firebase!";
+                    } else if (error.code === 'auth/unauthorized-domain') {
+                        alert(`DOMÍNIO NÃO AUTORIZADO:\n\nAdicione este domínio no Firebase:\n${window.location.hostname}\n\n(Vá em Authentication > Settings > Authorized Domains e adicione este link)`);
+                        msg = "Domínio não autorizado.";
+                    } else if (error.code === 'auth/popup-closed-by-user') {
+                        msg = "Login cancelado.";
+                    } else {
+                        msg = `Erro: ${error.message}`;
+                    }
+                    
+                    showNotification(msg, "error");
                 } finally {
                     setLoadingAuth(false);
                 }
@@ -302,7 +317,8 @@
                 return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
             };
 
-            const compressImage = (file) => new Promise((resolve, reject) => {
+            // --- COMPRESSÃO INTELIGENTE E CIRÚRGICA (Máxima Qualidade no Limite) ---
+            const compressImageSmart = (file) => new Promise((resolve, reject) => {
                 const reader = new FileReader();
                 reader.readAsDataURL(file);
                 reader.onload = (e) => {
@@ -310,48 +326,94 @@
                     img.src = e.target.result;
                     img.onload = () => {
                         const canvas = document.createElement('canvas');
-                        const MAX = 1200;
-                        let w = img.width, h = img.height;
-                        if (w > h) { if (w > MAX) { h *= MAX/w; w = MAX; } }
-                        else { if (h > MAX) { w *= MAX/h; h = MAX; } }
-                        canvas.width = w; canvas.height = h;
+                        let width = img.width;
+                        let height = img.height;
+                        let quality = 0.95; // Tenta manter 95% de qualidade inicial
+                        
+                        // Limite do Firestore: ~1MB (1.048.576 bytes). Margem de segurança: 950KB.
+                        const MAX_SIZE_BYTES = 950 * 1024;
+
+                        // Se a imagem for monstruosa (ex: 8000px), reduzimos dimensões primeiro
+                        // para evitar travar o canvas, mas mantendo resolução alta (2500px é HD+)
+                        const MAX_DIM = 2500; 
+                        if (width > MAX_DIM || height > MAX_DIM) {
+                            if (width > height) { height *= MAX_DIM/width; width = MAX_DIM; }
+                            else { width *= MAX_DIM/height; height = MAX_DIM; }
+                        }
+
+                        canvas.width = width;
+                        canvas.height = height;
                         const ctx = canvas.getContext('2d');
-                        ctx.drawImage(img, 0, 0, w, h);
-                        resolve(canvas.toDataURL('image/jpeg', 0.8));
+                        ctx.drawImage(img, 0, 0, width, height);
+
+                        let dataUrl = canvas.toDataURL('image/jpeg', quality);
+                        
+                        // Loop inteligente: Reduz qualidade gradualmente APENAS se passar do limite
+                        while (dataUrl.length > MAX_SIZE_BYTES && quality > 0.1) {
+                            quality -= 0.1;
+                            dataUrl = canvas.toDataURL('image/jpeg', quality);
+                        }
+                        
+                        resolve(dataUrl);
                     };
+                    img.onerror = reject;
                 };
+                reader.onerror = reject;
+            });
+
+            const fileToDataUrl = (file) => new Promise(resolve => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result);
+                reader.readAsDataURL(file);
             });
 
             const handleFileUpload = async (e) => {
                 const files = Array.from((e.target.files || e.dataTransfer.files));
                 if (files.length === 0 || !user) return;
                 setUploading(true);
+                
                 const userMediaRef = collection(db, 'artifacts', appId, 'users', user.uid, 'media');
                 let successCount = 0;
 
                 for (const file of files) {
                     try {
                         const type = file.type.startsWith('image/') ? 'image' : 'video';
-                        if (type === 'video' && file.size > 5 * 1024 * 1024) { // 5MB limit check visual
-                             showNotification(`Vídeo ${file.name} grande demais p/ demo`, "error");
+                        
+                        // Verificação de segurança para vídeos
+                        // O Firestore gratuito não suporta arquivos > 1MB por documento.
+                        // Para vídeos, é impossível manter alta qualidade nesse limite sem Storage.
+                        if (type === 'video' && file.size > 950 * 1024) { 
+                             showNotification(`Vídeo ${file.name} ignorado (>950KB). Limite do plano gratuito.`, "error");
                              continue; 
                         }
                         
-                        let finalUrl = await (type === 'image' ? compressImage(file) : new Promise(r => {
-                            const reader = new FileReader();
-                            reader.onloadend = () => r(reader.result);
-                            reader.readAsDataURL(file);
-                        }));
+                        let finalUrl = '';
+                        if (type === 'image') {
+                            finalUrl = await compressImageSmart(file);
+                        } else {
+                            finalUrl = await fileToDataUrl(file);
+                        }
 
-                        // Auto-tag simples
+                        // Verifica se após compressão ainda estourou o limite (raro, mas possível)
+                        if (finalUrl.length > 1048000) {
+                             showNotification(`Arquivo ${file.name} muito complexo para salvar.`, "error");
+                             continue;
+                        }
+
                         let cat = 'general';
                         const n = file.name.toLowerCase();
                         if (n.includes('print')) cat = 'screenshot';
                         else if (n.includes('doc')) cat = 'work';
                         
                         await addDoc(userMediaRef, {
-                            name: file.name, url: finalUrl, type, size: file.size,
-                            category: cat, tags: [], favorite: false, createdAt: serverTimestamp()
+                            name: file.name, 
+                            url: finalUrl, 
+                            type, 
+                            size: file.size, // Mantém tamanho original para display
+                            category: cat, 
+                            tags: [], 
+                            favorite: false, 
+                            createdAt: serverTimestamp()
                         });
                         successCount++;
                     } catch (e) { console.error(e); }
@@ -469,7 +531,7 @@
                     
                     {/* Toast */}
                     {notification && (
-                        <div className={`fixed top-4 right-4 z-[70] px-4 py-2 rounded-lg shadow-lg border animate-bounce ${notification.type === 'error' ? 'bg-red-500/90 border-red-400' : 'bg-green-600/90 border-green-400'}`}>
+                        <div className={`fixed top-4 right-4 z-[70] px-4 py-2 rounded-lg shadow-lg border animate-bounce ${notification.type === 'error' ? 'bg-red-500/90 border-red-400' : 'bg-green-600/90 border-green-400'} text-white`}>
                             {notification.msg}
                         </div>
                     )}
@@ -509,7 +571,7 @@
                         <div className="px-6 mb-6">
                             <div className="flex justify-between text-[10px] text-slate-400 mb-1">
                                 <span>Uso (Simulado)</span>
-                                <span>{formatBytes(storageUsage)} / 1PB</span>
+                                <span>{formatBytes(storageUsage)} / 1000 TB</span>
                             </div>
                             <div className="w-full h-1.5 bg-slate-900 rounded-full overflow-hidden">
                                 <div className="h-full bg-blue-500" style={{ width: `${Math.min(100, (storageUsage/MAX_STORAGE_BYTES)*100)}%` }}></div>
@@ -661,13 +723,14 @@
                                     <div className="flex items-center justify-center gap-3">
                                         <span className="px-2 py-0.5 bg-slate-800 border border-slate-700 rounded text-xs text-slate-300">{selectedItem.category}</span>
                                         <button onClick={() => {
-                                            if(confirm("Baixar arquivo?")) {
+                                            if(confirm("Baixar arquivo original?")) {
                                                 const a = document.createElement('a');
                                                 a.href = selectedItem.url;
+                                                a.target = "_blank"; // Abre em nova aba para download direto
                                                 a.download = selectedItem.name;
                                                 a.click();
                                             }
-                                        }} className="text-blue-400 hover:text-blue-300 text-sm flex items-center gap-1"><DownloadCloud size={14}/> Baixar</button>
+                                        }} className="text-blue-400 hover:text-blue-300 text-sm flex items-center gap-1"><DownloadCloud size={14}/> Baixar Original</button>
                                         <button onClick={() => {
                                             if(confirm("Excluir permanentemente?")) {
                                                 deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'media', selectedItem.id));
@@ -694,14 +757,17 @@
         }
 
         function PermissionErrorScreen() {
+            // Regras apenas para Firestore
             const rules = `rules_version = '2';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    match /{document=**} {\n      allow read, write: if request.auth != null;\n    }\n  }\n}`;
             return (
                 <div className="h-screen bg-slate-900 flex items-center justify-center p-4">
-                    <div className="bg-slate-800 p-8 rounded-2xl max-w-lg border border-yellow-500/30 w-full">
+                    <div className="bg-slate-800 p-8 rounded-2xl max-w-lg border border-yellow-500/30 w-full shadow-2xl">
                         <ShieldCheck className="mx-auto text-yellow-500 mb-4" size={48} />
-                        <h2 className="text-xl font-bold text-white text-center mb-2">Acesso Bloqueado</h2>
-                        <p className="text-slate-400 text-sm text-center mb-4">Cole estas regras no Console do Firebase:</p>
-                        <div className="bg-black/50 p-4 rounded-xl text-green-400 font-mono text-xs overflow-x-auto relative group border border-slate-700">
+                        <h2 className="text-xl font-bold text-white text-center mb-2">Configuração Pendente</h2>
+                        <p className="text-slate-400 text-sm text-center mb-4">
+                            Cole estas regras no Console do Firebase (Aba Firestore Database &gt; Rules) para liberar o acesso:
+                        </p>
+                        <div className="bg-black/50 p-4 rounded-xl text-green-400 font-mono text-xs overflow-x-auto relative group border border-slate-700 h-48">
                             <pre>{rules}</pre>
                             <button onClick={()=>navigator.clipboard.writeText(rules)} className="absolute top-2 right-2 bg-slate-700 p-1.5 rounded hover:bg-slate-600 text-white transition-colors"><Copy size={14}/></button>
                         </div>
