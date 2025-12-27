@@ -3,46 +3,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SmartVault - Backup Seguro</title>
+    <title>SmartVault - Local & Seguro</title>
     
-    <!-- PWA: Meta Tags Essenciais -->
+    <!-- Meta Tags PWA -->
     <meta name="theme-color" content="#0f172a">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="SmartVault">
-    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/6409/6409867.png">
 
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- Configuração do Tailwind -->
+    <!-- Tailwind Config -->
     <script>
         tailwind.config = {
             theme: {
                 extend: {
-                    fontFamily: {
-                        sans: ['Inter', 'sans-serif'],
-                    },
-                    animation: {
-                        'fade-in': 'fadeIn 0.3s ease-out',
-                        'slide-in': 'slideIn 0.3s ease-out',
-                    },
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    animation: { 'fade-in': 'fadeIn 0.3s ease-out' },
                     keyframes: {
-                        fadeIn: {
-                            '0%': { opacity: '0' },
-                            '100%': { opacity: '1' },
-                        },
-                        slideIn: {
-                            '0%': { transform: 'translateY(10px)', opacity: '0' },
-                            '100%': { transform: 'translateY(0)', opacity: '1' },
-                        }
+                        fadeIn: { '0%': { opacity: '0' }, '100%': { opacity: '1' } }
                     }
                 }
             }
         }
     </script>
 
-    <!-- Import Map (Sem Storage, apenas Auth e Firestore) -->
+    <!-- Import Map -->
     <script type="importmap">
     {
         "imports": {
@@ -51,7 +37,8 @@
             "lucide-react": "https://esm.sh/lucide-react@0.344.0",
             "firebase/app": "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js",
             "firebase/auth": "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js",
-            "firebase/firestore": "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js"
+            "idb": "https://esm.sh/idb@7.1.1",
+            "jszip": "https://esm.sh/jszip@3.10.1"
         }
     }
     </script>
@@ -60,619 +47,670 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
     <style>
-        body { margin: 0; background-color: #0f172a; color: #f1f5f9; }
-        /* Scrollbar suave */
+        body { background-color: #0f172a; color: #f1f5f9; overflow: hidden; }
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: #1e293b; }
         ::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
-        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
-        .scrollbar-hide::-webkit-scrollbar { display: none; }
-        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
-        
-        /* Previne zoom no input em iOS */
-        input, select, textarea { font-size: 16px !important; }
+        .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.05); }
     </style>
-
-    <!-- PWA Setup Script -->
-    <script>
-        const manifest = {
-            "name": "SmartVault Cloud",
-            "short_name": "SmartVault",
-            "start_url": ".",
-            "display": "standalone",
-            "background_color": "#0f172a",
-            "theme_color": "#0f172a",
-            "orientation": "portrait",
-            "icons": [
-                {
-                    "src": "https://cdn-icons-png.flaticon.com/512/6409/6409867.png",
-                    "sizes": "512x512",
-                    "type": "image/png"
-                }
-            ]
-        };
-        
-        try {
-            const manifestBlob = new Blob([JSON.stringify(manifest)], {type: 'application/json'});
-            const manifestURL = URL.createObjectURL(manifestBlob);
-            const link = document.createElement('link');
-            link.rel = 'manifest';
-            link.href = manifestURL;
-            document.head.appendChild(link);
-        } catch(e) { console.warn("Falha manifesto:", e); }
-
-        if ('serviceWorker' in navigator) {
-            const swCode = `
-                self.addEventListener('install', (e) => e.waitUntil(self.skipWaiting()));
-                self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
-                self.addEventListener('fetch', (e) => {
-                    e.respondWith(fetch(e.request).catch(() => new Response('Offline')));
-                });
-            `;
-            try {
-                const swBlob = new Blob([swCode], {type: 'application/javascript'});
-                const swUrl = URL.createObjectURL(swBlob);
-                navigator.serviceWorker.register(swUrl).catch(e => console.warn('SW Fail:', e.message));
-            } catch (e) { console.warn('PWA Setup Error:', e); }
-        }
-    </script>
 </head>
 <body>
     <div id="root"></div>
 
     <script type="text/babel" data-type="module">
-        import React, { useState, useEffect, useMemo } from 'react';
+        import React, { useState, useEffect, useMemo, useRef } from 'react';
         import { createRoot } from 'react-dom/client';
         import { 
             Camera, Video, Image as ImageIcon, Grid, List, Upload, Trash2, 
-            Search, FolderOpen, Star, Cloud, Wifi, X, Briefcase, BookOpen, 
-            FileText, Smile, Plane, Smartphone, Lock, DownloadCloud, AlertTriangle, 
-            Settings, ShieldCheck, Copy, Plus, LogOut, UploadCloud, PieChart, FolderPlus, 
-            Server, Menu, User, Mail, Key, HardDrive
+            Search, FolderOpen, Star, Cloud, Menu, X, DownloadCloud, 
+            Settings, HardDrive, LogOut, Plus, RefreshCw, Smartphone, 
+            ShieldCheck, AlertTriangle, FileJson, UploadCloud, FolderPlus, Move,
+            FileText, File as FileGeneric, Eye, Archive
         } from 'lucide-react';
         import { initializeApp } from 'firebase/app';
         import { 
-            getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken, 
-            signOut, GoogleAuthProvider, signInWithPopup, createUserWithEmailAndPassword, 
-            signInWithEmailAndPassword 
+            getAuth, signInAnonymously, onAuthStateChanged, signOut, 
+            GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, 
+            createUserWithEmailAndPassword 
         } from 'firebase/auth';
-        import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc, query, orderBy, serverTimestamp, setDoc, getDoc } from 'firebase/firestore';
+        import { openDB } from 'idb';
+        import JSZip from 'jszip';
 
-        // --- CONFIGURAÇÃO DO FIREBASE ---
-        const manualConfig = {
-            apiKey: "AIzaSyBCkh9J-RqQaM7nHxNbJjbs74TwrMh-E6s",
-            authDomain: "whatsapp-20-153cc.firebaseapp.com",
-            projectId: "whatsapp-20-153cc",
-            storageBucket: "whatsapp-20-153cc.firebasestorage.app",
+        // --- DATABASE LOCAL (IndexedDB) ---
+        const DB_NAME = 'SmartVaultDB';
+        const STORE_NAME = 'media_store';
+
+        const initDB = async () => {
+            return openDB(DB_NAME, 1, {
+                upgrade(db) {
+                    if (!db.objectStoreNames.contains(STORE_NAME)) {
+                        const store = db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+                        store.createIndex('date', 'createdAt');
+                        store.createIndex('type', 'type');
+                    }
+                },
+            });
+        };
+
+        const saveToDB = async (item) => {
+            const db = await initDB();
+            return db.put(STORE_NAME, item);
+        };
+
+        const getAllFromDB = async () => {
+            const db = await initDB();
+            return db.getAll(STORE_NAME);
+        };
+
+        const deleteFromDB = async (id) => {
+            const db = await initDB();
+            return db.delete(STORE_NAME, id);
+        };
+
+        const clearDB = async () => {
+            const db = await initDB();
+            return db.clear(STORE_NAME);
+        };
+
+        // --- FIREBASE CONFIG (Apenas Auth) ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyBCkh9J-RqQaM7nHxNbJjbs74TwrMh-E6s", 
+            authDomain: "smartvault-demo.firebaseapp.com",
+            projectId: "smartvault-demo",
+            storageBucket: "smartvault-demo.appspot.com",
             messagingSenderId: "807771374000",
             appId: "1:807771374000:web:ef66edfc92a8e5ee7c5675"
         };
-
-        const envConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-        const usingManualConfig = !!manualConfig.apiKey;
-        const firebaseConfig = usingManualConfig ? manualConfig : envConfig;
-        const hasConfig = Object.keys(firebaseConfig).length > 0;
         
-        const app = hasConfig ? initializeApp(firebaseConfig) : null;
-        const auth = app ? getAuth(app) : null;
-        const db = app ? getFirestore(app) : null;
-        // Storage removido para evitar cobranças/config complexa
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        let auth = null;
+        try {
+            const app = initializeApp(firebaseConfig);
+            auth = getAuth(app);
+        } catch (e) { console.warn("Firebase config error", e); }
 
-        // --- CONFIGURAÇÃO DE ARMAZENAMENTO (Virtualmente Ilimitado) ---
-        const MAX_STORAGE_BYTES = 1000 * 1024 * 1024 * 1024 * 1024; // 1 PB
+        // --- COMPONENTE THUMBNAIL INTELIGENTE ---
+        const MediaThumbnail = ({ item, viewMode }) => {
+            const [url, setUrl] = useState('');
+
+            useEffect(() => {
+                let objectUrl = '';
+                if (item.data instanceof Blob) {
+                    objectUrl = URL.createObjectURL(item.data);
+                    setUrl(objectUrl);
+                } else {
+                    setUrl(item.data);
+                }
+                return () => {
+                    if (objectUrl) URL.revokeObjectURL(objectUrl);
+                };
+            }, [item.data]);
+
+            const Icon = item.type === 'video' ? Video : (item.type === 'document' ? FileText : ImageIcon);
+            
+            if (viewMode === 'list') {
+                return (
+                    <div className="w-16 h-16 rounded-lg bg-slate-900 overflow-hidden flex-shrink-0 flex items-center justify-center border border-slate-700">
+                        {item.type === 'image' ? (
+                            <img src={url} className="w-full h-full object-cover" loading="lazy" />
+                        ) : (
+                            <Icon size={24} className={item.type === 'document' ? 'text-blue-400' : 'text-slate-500'} />
+                        )}
+                    </div>
+                );
+            }
+
+            return (
+                <div className="w-full h-full relative group bg-slate-800">
+                    {item.type === 'image' ? (
+                        <img src={url} className="w-full h-full object-cover" loading="lazy" />
+                    ) : item.type === 'video' ? (
+                        <div className="w-full h-full flex items-center justify-center bg-slate-900">
+                            <Video size={32} className="text-slate-600 group-hover:text-blue-500 transition-colors"/>
+                        </div>
+                    ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900 p-4 text-center">
+                            <FileText size={40} className="text-blue-500 mb-2"/>
+                            <span className="text-[10px] text-slate-400 font-mono bg-slate-800 px-1 rounded truncate w-full">
+                                {item.name.split('.').pop().toUpperCase()}
+                            </span>
+                        </div>
+                    )}
+                    
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-3">
+                        <p className="text-white text-xs font-medium truncate">{item.name}</p>
+                        <div className="flex justify-between items-center mt-1">
+                            <p className="text-slate-400 text-[10px]">{formatBytes(item.size)}</p>
+                            {item.type === 'document' && <span className="px-1.5 py-0.5 bg-blue-600 text-[9px] rounded text-white">DOC</span>}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const formatBytes = (bytes, decimals = 2) => {
+            if (!+bytes) return '0 Bytes';
+            const k = 1024;
+            const dm = decimals < 0 ? 0 : decimals;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+        };
 
         function App() {
-            // --- Estados ---
+            // --- ESTADOS ---
             const [user, setUser] = useState(null);
-            const [authMode, setAuthMode] = useState('login'); // 'login' | 'register'
+            const [authMode, setAuthMode] = useState('login');
             const [email, setEmail] = useState('');
             const [password, setPassword] = useState('');
-            const [loadingAuth, setLoadingAuth] = useState(false);
             
             const [mediaItems, setMediaItems] = useState([]);
-            const [customFolders, setCustomFolders] = useState([]);
+            const [folders, setFolders] = useState([]);
             const [viewMode, setViewMode] = useState('grid');
             const [activeFilter, setActiveFilter] = useState('all');
             const [searchQuery, setSearchQuery] = useState('');
-            const [isDragging, setIsDragging] = useState(false);
             const [selectedItem, setSelectedItem] = useState(null);
-            const [uploading, setUploading] = useState(false);
+            
+            const [isUploading, setIsUploading] = useState(false);
+            const [isExporting, setIsExporting] = useState(false);
+            const [isImporting, setIsImporting] = useState(false);
+            const [diskUsage, setDiskUsage] = useState({ used: 0, total: 0 });
+            
             const [notification, setNotification] = useState(null);
-            const [storageUsage, setStorageUsage] = useState(0);
-            const [installPrompt, setInstallPrompt] = useState(null);
-            const [configError, setConfigError] = useState(!hasConfig);
-            const [permissionError, setPermissionError] = useState(false);
+            const [sidebarOpen, setSidebarOpen] = useState(false);
+            const [showSettings, setShowSettings] = useState(false);
             const [showNewFolderModal, setShowNewFolderModal] = useState(false);
             const [newFolderName, setNewFolderName] = useState('');
-            const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Mobile Menu
 
-            // --- PWA Install Handler ---
             useEffect(() => {
-                const handler = (e) => { e.preventDefault(); setInstallPrompt(e); };
-                window.addEventListener('beforeinstallprompt', handler);
-                return () => window.removeEventListener('beforeinstallprompt', handler);
+                if(auth) {
+                    const unsub = onAuthStateChanged(auth, (u) => {
+                        setUser(u);
+                        if(u) loadData();
+                    });
+                    return () => unsub();
+                } else {
+                    setUser({ uid: 'local-user', email: 'Modo Offline' });
+                    loadData();
+                }
             }, []);
 
-            const handleInstallClick = () => {
-                if (!installPrompt) return;
-                installPrompt.prompt();
-                installPrompt.userChoice.then((r) => { if (r.outcome === 'accepted') setInstallPrompt(null); });
-            };
-
-            // --- 1. Monitoramento de Auth ---
-            useEffect(() => {
-                if (!auth) { setConfigError(true); return; }
-                const unsubscribe = onAuthStateChanged(auth, setUser);
-                return () => unsubscribe();
-            }, []);
-
-            // --- Ações de Login ---
-            const handleGoogleLogin = async () => {
-                setLoadingAuth(true);
+            const loadData = async () => {
                 try {
-                    const provider = new GoogleAuthProvider();
-                    await signInWithPopup(auth, provider);
-                    showNotification("Conectado com Google!");
-                } catch (error) {
-                    console.error("Google Auth Error:", error);
-                    let msg = "Erro no login Google.";
-                    
-                    if (error.code === 'auth/operation-not-allowed') {
-                        alert("AÇÃO NECESSÁRIA: O Login com Google não está ativado.\n\n1. Vá no Console do Firebase.\n2. Clique em Authentication > Sign-in method.\n3. Ative o provedor 'Google'.");
-                        msg = "Ative o Google no Console do Firebase!";
-                    } else if (error.code === 'auth/unauthorized-domain') {
-                        alert(`DOMÍNIO NÃO AUTORIZADO:\n\nAdicione este domínio no Firebase:\n${window.location.hostname}\n\n(Vá em Authentication > Settings > Authorized Domains e adicione este link)`);
-                        msg = "Domínio não autorizado.";
-                    } else if (error.code === 'auth/popup-closed-by-user') {
-                        msg = "Login cancelado.";
-                    } else {
-                        msg = `Erro: ${error.message}`;
-                    }
-                    
-                    showNotification(msg, "error");
-                } finally {
-                    setLoadingAuth(false);
-                }
-            };
+                    const allData = await getAllFromDB();
+                    const loadedFolders = allData.find(item => item.id === 'settings_folders');
+                    if (loadedFolders) setFolders(loadedFolders.list || []);
 
-            const handleEmailAuth = async (e) => {
-                e.preventDefault();
-                setLoadingAuth(true);
-                try {
-                    if (authMode === 'login') {
-                        await signInWithEmailAndPassword(auth, email, password);
-                        showNotification("Bem-vindo de volta!");
-                    } else {
-                        await createUserWithEmailAndPassword(auth, email, password);
-                        showNotification("Conta criada com sucesso!");
-                    }
-                } catch (error) {
-                    console.error(error);
-                    let msg = "Erro na autenticação.";
-                    if(error.code === 'auth/weak-password') msg = "Senha muito fraca (min 6 caracteres).";
-                    else if(error.code === 'auth/email-already-in-use') msg = "E-mail já cadastrado.";
-                    else if(error.code === 'auth/invalid-credential') msg = "E-mail ou senha incorretos.";
-                    showNotification(msg, "error");
-                } finally {
-                    setLoadingAuth(false);
-                }
-            };
-
-            const handleAnonymousLogin = async () => {
-                setLoadingAuth(true);
-                try {
-                    await signInAnonymously(auth);
-                    showNotification("Modo Visitante ativado.");
-                } catch (error) {
-                    console.error(error);
-                    showNotification("Erro no login anônimo.", "error");
-                } finally {
-                    setLoadingAuth(false);
-                }
-            };
-
-            // --- 2. Sincronização de Dados ---
-            useEffect(() => {
-                if (!user || !db) return;
-
-                const userMediaRef = collection(db, 'artifacts', appId, 'users', user.uid, 'media');
-                const q = query(userMediaRef, orderBy('createdAt', 'desc'));
-
-                const unsubMedia = onSnapshot(q, (snapshot) => {
-                    const items = snapshot.docs.map(doc => ({ 
-                        id: doc.id, 
-                        ...doc.data(),
-                        date: doc.data().createdAt?.toDate ? doc.data().createdAt.toDate().toLocaleDateString('pt-BR') : new Date().toLocaleDateString('pt-BR')
-                    }));
+                    const items = allData.filter(item => item.id !== 'settings_folders');
+                    items.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
                     setMediaItems(items);
-                    const totalSize = items.reduce((acc, item) => acc + (item.size || 0), 0);
-                    setStorageUsage(totalSize);
-                    setPermissionError(false);
-                }, (error) => {
-                    if (error.code === 'permission-denied') setPermissionError(true);
-                    else console.error("Firestore Error:", error);
-                });
+                    updateStorageEstimate();
+                } catch (err) { console.error("Erro ao carregar DB:", err); }
+            };
 
-                const settingsRef = doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'config');
-                getDoc(settingsRef).then(snap => {
-                    if (snap.exists() && snap.data().folders) setCustomFolders(snap.data().folders);
-                });
+            const updateStorageEstimate = async () => {
+                if (navigator.storage && navigator.storage.estimate) {
+                    const { usage, quota } = await navigator.storage.estimate();
+                    setDiskUsage({ used: usage, total: quota });
+                }
+            };
 
-                return () => unsubMedia();
-            }, [user]);
+            const handleCreateFolder = async () => {
+                if (!newFolderName.trim()) return;
+                const newFolder = { id: `folder_${Date.now()}`, name: newFolderName.trim() };
+                const updatedFolders = [...folders, newFolder];
+                setFolders(updatedFolders);
+                await saveToDB({ id: 'settings_folders', list: updatedFolders });
+                setNewFolderName('');
+                setShowNewFolderModal(false);
+                showNotification(`Pasta "${newFolder.name}" criada!`);
+            };
 
-            // --- Helpers e Lógica ---
+            const handleDeleteFolder = async (folderId) => {
+                if (!confirm("Excluir pasta? Os arquivos voltarão para a Galeria principal.")) return;
+                const updatedFolders = folders.filter(f => f.id !== folderId);
+                setFolders(updatedFolders);
+                await saveToDB({ id: 'settings_folders', list: updatedFolders });
+                const itemsToUpdate = mediaItems.filter(i => i.folderId === folderId);
+                for (let item of itemsToUpdate) {
+                    const updatedItem = { ...item, folderId: null };
+                    await saveToDB(updatedItem);
+                }
+                if (activeFilter === folderId) setActiveFilter('all');
+                loadData();
+                showNotification("Pasta excluída.");
+            };
+
+            const handleMoveItem = async (item, targetFolderId) => {
+                const updatedItem = { ...item, folderId: targetFolderId };
+                await saveToDB(updatedItem);
+                setMediaItems(prev => prev.map(i => i.id === item.id ? updatedItem : i));
+                setSelectedItem(prev => prev && prev.id === item.id ? updatedItem : prev);
+                showNotification("Arquivo movido com sucesso!");
+            };
+
+            const handleFileUpload = async (e) => {
+                const files = Array.from(e.target.files || e.dataTransfer.files);
+                if (!files.length) return;
+                
+                setIsUploading(true);
+                let count = 0;
+                const targetFolderId = activeFilter.startsWith('folder_') ? activeFilter : null;
+
+                for (const file of files) {
+                    try {
+                        let type = 'document';
+                        if (file.type.startsWith('image/')) type = 'image';
+                        else if (file.type.startsWith('video/')) type = 'video';
+                        
+                        const newItem = {
+                            id: crypto.randomUUID(),
+                            name: file.name,
+                            data: file,
+                            type: type,
+                            mimeType: file.type,
+                            size: file.size,
+                            folderId: targetFolderId,
+                            createdAt: new Date().toISOString(),
+                            category: 'upload'
+                        };
+
+                        await saveToDB(newItem);
+                        count++;
+                    } catch (error) {
+                        console.error("Erro upload:", error);
+                        showNotification(`Erro ao salvar ${file.name}`, 'error');
+                    }
+                }
+
+                await loadData();
+                setIsUploading(false);
+                showNotification(`${count} arquivos salvos!`);
+            };
+
+            // --- SISTEMA DE BACKUP ZIP ---
+            const handleExportBackup = async () => {
+                if(!confirm("Gerar Backup ZIP? Isso garante melhor qualidade e organização.")) return;
+                setIsExporting(true);
+                try {
+                    const zip = new JSZip();
+                    const allData = await getAllFromDB();
+                    
+                    const settingsFolders = allData.find(i => i.id === 'settings_folders');
+                    const foldersList = settingsFolders ? settingsFolders.list : [];
+                    const mediaItems = allData.filter(i => i.id !== 'settings_folders');
+                    
+                    const metadata = {
+                        version: "3.0",
+                        exportedAt: new Date().toISOString(),
+                        folders: foldersList,
+                        items: mediaItems.map(item => ({
+                            id: item.id,
+                            name: item.name,
+                            type: item.type,
+                            size: item.size,
+                            mimeType: item.mimeType,
+                            folderId: item.folderId,
+                            createdAt: item.createdAt
+                        }))
+                    };
+                    
+                    zip.file("smartvault_structure.json", JSON.stringify(metadata, null, 2));
+                    const assets = zip.folder("assets");
+                    
+                    for (const item of mediaItems) {
+                        if (item.data instanceof Blob) {
+                             const ext = item.name.split('.').pop() || 'bin';
+                             assets.file(`${item.id}.${ext}`, item.data);
+                        } else if (typeof item.data === 'string') {
+                            const base64Data = item.data.split(',')[1];
+                            assets.file(`${item.id}_legacy.bin`, base64Data, {base64: true});
+                        }
+                    }
+                    
+                    const content = await zip.generateAsync({type:"blob"});
+                    const url = URL.createObjectURL(content);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `SmartVault_Backup_${new Date().toLocaleDateString()}.zip`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                    
+                    showNotification("Backup ZIP gerado com sucesso!", "success");
+                } catch (e) {
+                    console.error(e);
+                    showNotification("Erro no backup: " + e.message, "error");
+                } finally { setIsExporting(false); }
+            };
+
+            const handleImportBackup = async (e) => {
+                const file = e.target.files[0];
+                if(!file) return;
+                if(!confirm("Restaurar backup ZIP? Isso irá mesclar os arquivos com os atuais.")) return;
+
+                setIsImporting(true);
+                try {
+                    const zip = new JSZip();
+                    const loadedZip = await zip.loadAsync(file);
+                    
+                    const metadataFile = loadedZip.file("smartvault_structure.json");
+                    if (!metadataFile) throw new Error("Arquivo inválido (falta smartvault_structure.json)");
+                    
+                    const metadataStr = await metadataFile.async("string");
+                    const metadata = JSON.parse(metadataStr);
+                    
+                    const currentFolders = folders;
+                    const backupFolders = metadata.folders || [];
+                    const uniqueFolders = [...currentFolders];
+                    backupFolders.forEach(bf => {
+                        if(!uniqueFolders.find(cf => cf.id === bf.id)) uniqueFolders.push(bf);
+                    });
+                    await saveToDB({ id: 'settings_folders', list: uniqueFolders });
+                    
+                    let count = 0;
+                    for (const metaItem of metadata.items) {
+                         const ext = metaItem.name.split('.').pop() || 'bin';
+                         let fileInZip = loadedZip.file(`assets/${metaItem.id}.${ext}`);
+                         if (!fileInZip) fileInZip = loadedZip.file(`assets/${metaItem.id}_legacy.bin`);
+                         
+                         if (fileInZip) {
+                             const blob = await fileInZip.async("blob");
+                             const newItem = { ...metaItem, data: blob };
+                             const existing = mediaItems.find(i => i.id === newItem.id);
+                             if(!existing) {
+                                await saveToDB(newItem);
+                                count++;
+                             }
+                         }
+                    }
+                    await loadData();
+                    showNotification(`${count} arquivos restaurados e organizados!`, "success");
+                } catch (err) {
+                    console.error(err);
+                    showNotification("Erro ao restaurar: " + err.message, "error");
+                } finally { setIsImporting(false); e.target.value = ''; }
+            };
+
+            const handleDelete = async (id) => {
+                if(confirm("Excluir permanentemente?")) {
+                    await deleteFromDB(id);
+                    setSelectedItem(null);
+                    loadData();
+                    showNotification("Item excluído.");
+                }
+            };
+
             const showNotification = (msg, type = 'success') => {
                 setNotification({ msg, type });
                 setTimeout(() => setNotification(null), 4000);
             };
 
-            const formatBytes = (bytes, decimals = 2) => {
-                if (!+bytes) return '0 Bytes';
-                const k = 1024;
-                const dm = decimals < 0 ? 0 : decimals;
-                const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB'];
-                const i = Math.floor(Math.log(bytes) / Math.log(k));
-                return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+            const handleLogin = async (method) => {
+                try {
+                    if (method === 'google') await signInWithPopup(auth, new GoogleAuthProvider());
+                    else if (method === 'anon') await signInAnonymously(auth);
+                    else if (method === 'email') await signInWithEmailAndPassword(auth, email, password);
+                } catch (e) { showNotification(e.message, 'error'); }
             };
 
-            // --- COMPRESSÃO INTELIGENTE E CIRÚRGICA (Máxima Qualidade no Limite) ---
-            const compressImageSmart = (file) => new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.readAsDataURL(file);
-                reader.onload = (e) => {
-                    const img = new Image();
-                    img.src = e.target.result;
-                    img.onload = () => {
-                        const canvas = document.createElement('canvas');
-                        let width = img.width;
-                        let height = img.height;
-                        let quality = 0.95; // Tenta manter 95% de qualidade inicial
-                        
-                        // Limite do Firestore: ~1MB (1.048.576 bytes). Margem de segurança: 950KB.
-                        const MAX_SIZE_BYTES = 950 * 1024;
-
-                        // Se a imagem for monstruosa (ex: 8000px), reduzimos dimensões primeiro
-                        // para evitar travar o canvas, mas mantendo resolução alta (2500px é HD+)
-                        const MAX_DIM = 2500; 
-                        if (width > MAX_DIM || height > MAX_DIM) {
-                            if (width > height) { height *= MAX_DIM/width; width = MAX_DIM; }
-                            else { width *= MAX_DIM/height; height = MAX_DIM; }
-                        }
-
-                        canvas.width = width;
-                        canvas.height = height;
-                        const ctx = canvas.getContext('2d');
-                        ctx.drawImage(img, 0, 0, width, height);
-
-                        let dataUrl = canvas.toDataURL('image/jpeg', quality);
-                        
-                        // Loop inteligente: Reduz qualidade gradualmente APENAS se passar do limite
-                        while (dataUrl.length > MAX_SIZE_BYTES && quality > 0.1) {
-                            quality -= 0.1;
-                            dataUrl = canvas.toDataURL('image/jpeg', quality);
-                        }
-                        
-                        resolve(dataUrl);
-                    };
-                    img.onerror = reject;
-                };
-                reader.onerror = reject;
-            });
-
-            const fileToDataUrl = (file) => new Promise(resolve => {
-                const reader = new FileReader();
-                reader.onloadend = () => resolve(reader.result);
-                reader.readAsDataURL(file);
-            });
-
-            const handleFileUpload = async (e) => {
-                const files = Array.from((e.target.files || e.dataTransfer.files));
-                if (files.length === 0 || !user) return;
-                setUploading(true);
-                
-                const userMediaRef = collection(db, 'artifacts', appId, 'users', user.uid, 'media');
-                let successCount = 0;
-
-                for (const file of files) {
-                    try {
-                        const type = file.type.startsWith('image/') ? 'image' : 'video';
-                        
-                        // Verificação de segurança para vídeos
-                        // O Firestore gratuito não suporta arquivos > 1MB por documento.
-                        // Para vídeos, é impossível manter alta qualidade nesse limite sem Storage.
-                        if (type === 'video' && file.size > 950 * 1024) { 
-                             showNotification(`Vídeo ${file.name} ignorado (>950KB). Limite do plano gratuito.`, "error");
-                             continue; 
-                        }
-                        
-                        let finalUrl = '';
-                        if (type === 'image') {
-                            finalUrl = await compressImageSmart(file);
-                        } else {
-                            finalUrl = await fileToDataUrl(file);
-                        }
-
-                        // Verifica se após compressão ainda estourou o limite (raro, mas possível)
-                        if (finalUrl.length > 1048000) {
-                             showNotification(`Arquivo ${file.name} muito complexo para salvar.`, "error");
-                             continue;
-                        }
-
-                        let cat = 'general';
-                        const n = file.name.toLowerCase();
-                        if (n.includes('print')) cat = 'screenshot';
-                        else if (n.includes('doc')) cat = 'work';
-                        
-                        await addDoc(userMediaRef, {
-                            name: file.name, 
-                            url: finalUrl, 
-                            type, 
-                            size: file.size, // Mantém tamanho original para display
-                            category: cat, 
-                            tags: [], 
-                            favorite: false, 
-                            createdAt: serverTimestamp()
-                        });
-                        successCount++;
-                    } catch (e) { console.error(e); }
-                }
-                setUploading(false);
-                setIsDragging(false);
-                if(successCount > 0) showNotification(`${successCount} arquivos enviados!`);
+            const handleRegister = async () => {
+                try { await createUserWithEmailAndPassword(auth, email, password); } 
+                catch(e) { showNotification(e.message, 'error'); }
             };
 
-            const handleLogout = async () => {
-                if(confirm("Deseja realmente sair?")) {
-                    await signOut(auth);
-                    setUser(null);
-                }
-            };
+            const filteredItems = useMemo(() => {
+                return mediaItems.filter(item => {
+                    const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase());
+                    let matchesCategory = true;
+                    
+                    if (activeFilter === 'all') matchesCategory = true;
+                    else if (activeFilter === 'video') matchesCategory = item.type === 'video';
+                    else if (activeFilter === 'image') matchesCategory = item.type === 'image';
+                    else if (activeFilter === 'document') matchesCategory = item.type === 'document';
+                    else if (activeFilter.startsWith('folder_')) matchesCategory = item.folderId === activeFilter;
+                    
+                    return matchesSearch && matchesCategory;
+                });
+            }, [mediaItems, searchQuery, activeFilter]);
 
-            const handleCreateFolder = async () => {
-                if(!newFolderName.trim()) return;
-                const updated = [...customFolders, newFolderName.trim()];
-                setCustomFolders(updated);
-                setNewFolderName('');
-                setShowNewFolderModal(false);
-                await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'config'), { folders: updated }, { merge: true });
-            };
+            const currentFolderName = useMemo(() => {
+                if (activeFilter === 'all') return 'Galeria Principal';
+                if (activeFilter === 'image') return 'Imagens';
+                if (activeFilter === 'video') return 'Vídeos';
+                if (activeFilter === 'document') return 'Documentos';
+                const folder = folders.find(f => f.id === activeFilter);
+                return folder ? folder.name : 'Galeria';
+            }, [activeFilter, folders]);
 
-            // Filtros
-            const filteredItems = useMemo(() => mediaItems.filter(i => {
-                const search = i.name.toLowerCase().includes(searchQuery.toLowerCase());
-                if (activeFilter === 'photos') return search && i.type === 'image';
-                if (activeFilter === 'videos') return search && i.type === 'video';
-                if (activeFilter === 'favorites') return search && i.favorite;
-                if (activeFilter !== 'all') return search && i.category === activeFilter;
-                return search;
-            }), [mediaItems, activeFilter, searchQuery]);
-
-            // --- TELA DE LOGIN ---
-            if (!user) {
-                return (
-                    <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4 relative overflow-hidden">
-                        {/* Background Effect */}
-                        <div className="absolute top-0 left-0 w-full h-full overflow-hidden z-0">
-                            <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-600/20 rounded-full blur-[100px]"></div>
-                            <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-purple-600/20 rounded-full blur-[100px]"></div>
+            // --- RENDER ---
+            if (!user) return (
+                <div className="min-h-screen bg-[#0f172a] flex items-center justify-center p-4 relative overflow-hidden">
+                    <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=2072&auto=format&fit=crop')] bg-cover opacity-20 animate-pulse"></div>
+                    <div className="glass p-8 rounded-2xl w-full max-w-md z-10 shadow-2xl">
+                        <div className="text-center mb-8">
+                            <div className="inline-flex p-4 bg-blue-600 rounded-2xl mb-4 shadow-lg shadow-blue-500/50">
+                                <HardDrive size={40} className="text-white" />
+                            </div>
+                            <h1 className="text-3xl font-bold text-white">SmartVault <span className="text-blue-400">Local</span></h1>
+                            <p className="text-slate-400 mt-2">Armazenamento ilimitado no seu dispositivo.</p>
                         </div>
-
-                        {notification && (
-                            <div className={`fixed top-4 z-[60] px-4 py-2 rounded-lg shadow-lg border animate-bounce ${notification.type === 'error' ? 'bg-red-500/90 border-red-400' : 'bg-green-600/90 border-green-400'} text-white`}>
-                                {notification.msg}
+                        {authMode === 'login' ? (
+                            <div className="space-y-4">
+                                <button onClick={() => handleLogin('google')} className="w-full bg-white hover:bg-gray-100 text-slate-900 py-3 rounded-xl font-medium transition flex justify-center items-center gap-2">
+                                    <span className="font-bold">G</span> Entrar com Google
+                                </button>
+                                <div className="flex items-center gap-2"><div className="h-px bg-slate-700 flex-1"></div><span className="text-xs text-slate-500">OU</span><div className="h-px bg-slate-700 flex-1"></div></div>
+                                <input type="email" placeholder="Email" className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-blue-500 outline-none" value={email} onChange={e => setEmail(e.target.value)} />
+                                <input type="password" placeholder="Senha" className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-blue-500 outline-none" value={password} onChange={e => setPassword(e.target.value)} />
+                                <button onClick={() => handleLogin('email')} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold shadow-lg shadow-blue-900/50 transition">Entrar</button>
+                                <p className="text-center text-sm text-slate-400 cursor-pointer hover:text-white" onClick={() => setAuthMode('register')}>Criar uma conta</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-4">
+                                <input type="email" placeholder="Email" className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white" value={email} onChange={e => setEmail(e.target.value)} />
+                                <input type="password" placeholder="Senha" className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white" value={password} onChange={e => setPassword(e.target.value)} />
+                                <button onClick={handleRegister} className="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-bold transition">Cadastrar</button>
+                                <p className="text-center text-sm text-slate-400 cursor-pointer hover:text-white" onClick={() => setAuthMode('login')}>Voltar para Login</p>
                             </div>
                         )}
-
-                        <div className="bg-slate-800/80 backdrop-blur-md p-8 rounded-2xl shadow-2xl w-full max-w-md border border-slate-700 z-10 animate-fade-in">
-                            <div className="text-center mb-8">
-                                <div className="inline-flex p-3 bg-blue-600 rounded-xl mb-4 shadow-lg shadow-blue-500/30">
-                                    <Cloud size={40} className="text-white" />
-                                </div>
-                                <h1 className="text-3xl font-bold text-white mb-2">SmartVault</h1>
-                                <p className="text-slate-400">Suas memórias, seguras na nuvem.</p>
-                            </div>
-
-                            <button onClick={handleGoogleLogin} disabled={loadingAuth} className="w-full bg-white hover:bg-slate-100 text-slate-900 font-semibold py-3 px-4 rounded-xl flex items-center justify-center gap-3 transition-transform active:scale-95 mb-6">
-                                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-5 h-5" alt="G" />
-                                {loadingAuth ? 'Conectando...' : 'Entrar com Google'}
-                            </button>
-
-                            <div className="relative mb-6">
-                                <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-700"></div></div>
-                                <div className="relative flex justify-center text-sm"><span className="px-2 bg-slate-800 text-slate-500">ou use e-mail</span></div>
-                            </div>
-
-                            <form onSubmit={handleEmailAuth} className="space-y-4">
-                                <div className="relative">
-                                    <Mail className="absolute left-3 top-3.5 text-slate-500" size={18} />
-                                    <input 
-                                        type="email" placeholder="Seu e-mail" required
-                                        className="w-full bg-slate-900/50 border border-slate-700 rounded-lg py-3 pl-10 pr-4 text-white focus:outline-none focus:border-blue-500"
-                                        value={email} onChange={e => setEmail(e.target.value)}
-                                    />
-                                </div>
-                                <div className="relative">
-                                    <Key className="absolute left-3 top-3.5 text-slate-500" size={18} />
-                                    <input 
-                                        type="password" placeholder="Sua senha" required minLength={6}
-                                        className="w-full bg-slate-900/50 border border-slate-700 rounded-lg py-3 pl-10 pr-4 text-white focus:outline-none focus:border-blue-500"
-                                        value={password} onChange={e => setPassword(e.target.value)}
-                                    />
-                                </div>
-                                <button type="submit" disabled={loadingAuth} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-xl transition-colors shadow-lg shadow-blue-900/20">
-                                    {loadingAuth ? 'Processando...' : (authMode === 'login' ? 'Entrar' : 'Criar Conta')}
-                                </button>
-                            </form>
-
-                            <div className="mt-4 text-center flex justify-between text-sm">
-                                <button onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')} className="text-blue-400 hover:text-blue-300">
-                                    {authMode === 'login' ? 'Não tem conta? Cadastre-se' : 'Já tem conta? Entre'}
-                                </button>
-                            </div>
-                            
-                            <button onClick={handleAnonymousLogin} className="w-full mt-6 text-xs text-slate-500 hover:text-slate-300 underline">
-                                Continuar como visitante (dados não salvos permanentemente)
-                            </button>
-                        </div>
+                        <button onClick={() => handleLogin('anon')} className="w-full mt-4 text-xs text-slate-500 hover:text-slate-300">Modo Visitante (Offline)</button>
                     </div>
-                );
-            }
+                </div>
+            );
 
-            if (permissionError) return <PermissionErrorScreen />;
-
-            // --- APP PRINCIPAL ---
             return (
-                <div className="flex h-screen bg-slate-900 text-slate-100 font-sans overflow-hidden"
-                     onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-                     onDragLeave={(e) => { e.preventDefault(); setIsDragging(false); }}
-                     onDrop={(e) => { e.preventDefault(); handleFileUpload(e); }}>
-                    
-                    {/* Toast */}
+                <div className="flex h-screen bg-[#0f172a] text-slate-100 font-sans overflow-hidden">
+                    {/* ... (Toasts e Modais inalterados) ... */}
                     {notification && (
-                        <div className={`fixed top-4 right-4 z-[70] px-4 py-2 rounded-lg shadow-lg border animate-bounce ${notification.type === 'error' ? 'bg-red-500/90 border-red-400' : 'bg-green-600/90 border-green-400'} text-white`}>
-                            {notification.msg}
+                        <div className={`fixed top-6 right-6 z-50 px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3 animate-fade-in ${notification.type === 'error' ? 'bg-red-500/90' : 'bg-emerald-600/90'} backdrop-blur-md`}>
+                            {notification.type === 'error' ? <AlertTriangle size={20}/> : <ShieldCheck size={20}/>}
+                            <span className="font-medium">{notification.msg}</span>
+                        </div>
+                    )}
+                    {showNewFolderModal && (
+                        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+                            <div className="bg-slate-800 p-6 rounded-2xl w-full max-w-sm border border-slate-700 shadow-2xl animate-fade-in">
+                                <h3 className="text-lg font-bold text-white mb-4">Nova Pasta</h3>
+                                <input autoFocus type="text" placeholder="Ex: Praia, Trabalho..." className="w-full bg-slate-900 border border-slate-600 rounded-xl p-3 text-white mb-4 focus:ring-2 focus:ring-blue-500 outline-none" value={newFolderName} onChange={(e) => setNewFolderName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleCreateFolder()} />
+                                <div className="flex justify-end gap-3">
+                                    <button onClick={() => setShowNewFolderModal(false)} className="px-4 py-2 text-slate-400 hover:text-white">Cancelar</button>
+                                    <button onClick={handleCreateFolder} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium">Criar</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    {showSettings && (
+                         <div className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={(e) => e.target === e.currentTarget && setShowSettings(false)}>
+                            <div className="bg-slate-800 rounded-2xl w-full max-w-lg border border-slate-700 shadow-2xl overflow-hidden animate-fade-in">
+                                <div className="p-6 border-b border-slate-700 flex justify-between items-center">
+                                    <h2 className="text-xl font-bold flex items-center gap-2"><Settings className="text-blue-400"/> Configurações</h2>
+                                    <button onClick={() => setShowSettings(false)} className="text-slate-400 hover:text-white"><X size={24}/></button>
+                                </div>
+                                <div className="p-6 space-y-6">
+                                    <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-700">
+                                        <div className="flex justify-between items-center mb-2">
+                                            <span className="text-sm text-slate-400">Espaço em Disco</span>
+                                            <span className="text-xs font-mono bg-blue-900/30 text-blue-300 px-2 py-1 rounded">{formatBytes(diskUsage.used)} usados</span>
+                                        </div>
+                                        <div className="w-full bg-slate-700 h-2 rounded-full overflow-hidden">
+                                            <div className="bg-blue-500 h-full transition-all duration-1000" style={{width: `${(diskUsage.used / (diskUsage.total || 1)) * 100}%`}}></div>
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <button onClick={handleExportBackup} disabled={isExporting} className="flex flex-col items-center justify-center p-4 bg-slate-700 hover:bg-slate-600 rounded-xl border border-slate-600 transition group relative">
+                                            {isExporting ? <RefreshCw className="animate-spin text-emerald-400 mb-2"/> : <Archive size={28} className="text-emerald-400 mb-2 group-hover:scale-110 transition-transform"/>}
+                                            <span className="font-semibold text-sm">Baixar Backup ZIP</span>
+                                            <span className="text-[10px] text-slate-400 text-center">Organizado & Alta Qualidade</span>
+                                        </button>
+                                        <label className="flex flex-col items-center justify-center p-4 bg-slate-700 hover:bg-slate-600 rounded-xl border border-slate-600 transition cursor-pointer group relative">
+                                            {isImporting ? <RefreshCw className="animate-spin text-blue-400 mb-2"/> : <UploadCloud size={28} className="text-blue-400 mb-2 group-hover:scale-110 transition-transform"/>}
+                                            <span className="font-semibold text-sm">Restaurar ZIP</span>
+                                            <span className="text-[10px] text-slate-400 text-center">Carregar Backup</span>
+                                            <input type="file" accept=".zip" className="hidden" onChange={handleImportBackup} disabled={isImporting} />
+                                        </label>
+                                    </div>
+                                    <div className="pt-4 border-t border-slate-700">
+                                        <button onClick={() => {if(confirm("Apagar TUDO?")) clearDB().then(loadData)}} className="text-red-400 text-sm hover:text-red-300 flex items-center gap-2">
+                                            <Trash2 size={16}/> Apagar Tudo Localmente
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     )}
 
-                    {/* Drag Overlay */}
-                    {isDragging && (
-                        <div className="absolute inset-0 z-[60] bg-blue-500/30 backdrop-blur-sm flex items-center justify-center border-4 border-blue-500 border-dashed m-4 rounded-xl">
-                            <div className="text-center text-white font-bold text-2xl animate-pulse">Solte para Upload</div>
-                        </div>
-                    )}
-
-                    {/* Mobile Sidebar Overlay */}
-                    {isSidebarOpen && (
-                        <div className="fixed inset-0 bg-black/60 z-40 md:hidden backdrop-blur-sm" onClick={() => setIsSidebarOpen(false)}></div>
-                    )}
-
-                    {/* Sidebar (Responsive) */}
-                    <aside className={`fixed md:relative z-50 h-full w-72 md:w-64 bg-slate-800 border-r border-slate-700 flex flex-col transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
-                        <div className="p-6 flex items-center gap-3">
-                            <div className="p-2 bg-blue-600 rounded-lg"><Cloud className="text-white" size={24} /></div>
-                            <div>
-                                <h1 className="font-bold text-lg leading-none">SmartVault</h1>
-                                <span className="text-[10px] text-blue-400 font-semibold tracking-wider">CLOUD EDITION</span>
+                    {/* --- SIDEBAR CORRIGIDA COM FLEXBOX --- */}
+                    <aside className={`fixed md:relative z-30 w-72 h-full bg-slate-900 border-r border-slate-800 transform transition-transform duration-300 flex flex-col ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
+                        {/* Header Fixo */}
+                        <div className="p-6 flex items-center justify-between flex-shrink-0">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-blue-600 rounded-lg shadow-lg shadow-blue-900/20"><HardDrive size={20} className="text-white"/></div>
+                                <span className="font-bold text-lg tracking-tight">SmartVault</span>
                             </div>
-                            <button onClick={() => setIsSidebarOpen(false)} className="md:hidden ml-auto text-slate-400"><X size={24}/></button>
+                            <button onClick={() => setSidebarOpen(false)} className="md:hidden text-slate-400"><X size={24}/></button>
                         </div>
-
-                        {/* User Info */}
-                        <div className="px-6 mb-4">
-                            <div className="flex items-center gap-2 text-xs px-3 py-2 rounded border border-slate-600 bg-slate-700/50">
-                                {user.isAnonymous ? <User size={12} /> : <div className="w-2 h-2 rounded-full bg-green-500"></div>}
-                                <span className="truncate flex-1">{user.email || 'Visitante'}</span>
-                            </div>
+                        
+                        {/* Botão Upload Fixo */}
+                        <div className="px-4 mb-6 flex-shrink-0">
+                            <label className="flex items-center justify-center gap-2 w-full bg-white hover:bg-slate-100 text-slate-900 font-semibold py-3 rounded-xl cursor-pointer transition shadow-lg shadow-white/10 active:scale-95 group">
+                                {isUploading ? <RefreshCw className="animate-spin" size={20}/> : <Plus size={20} className="group-hover:rotate-90 transition-transform"/>}
+                                <span>Adicionar Arquivo</span>
+                                <input 
+                                    type="file" 
+                                    multiple 
+                                    className="hidden" 
+                                    onChange={handleFileUpload} 
+                                />
+                            </label>
+                            {activeFilter.startsWith('folder_') && <p className="text-[10px] text-center text-slate-500 mt-2">Enviando para: {currentFolderName}</p>}
                         </div>
 
-                        {/* Storage Bar */}
-                        <div className="px-6 mb-6">
-                            <div className="flex justify-between text-[10px] text-slate-400 mb-1">
-                                <span>Uso (Simulado)</span>
-                                <span>{formatBytes(storageUsage)} / 1000 TB</span>
-                            </div>
-                            <div className="w-full h-1.5 bg-slate-900 rounded-full overflow-hidden">
-                                <div className="h-full bg-blue-500" style={{ width: `${Math.min(100, (storageUsage/MAX_STORAGE_BYTES)*100)}%` }}></div>
-                            </div>
-                        </div>
-
-                        {/* Nav */}
-                        <nav className="flex-1 px-4 py-2 space-y-1 overflow-y-auto">
-                            <SidebarItem icon={<Grid size={18} />} label="Galeria" active={activeFilter === 'all'} onClick={() => {setActiveFilter('all'); setIsSidebarOpen(false);}} />
-                            <SidebarItem icon={<ImageIcon size={18} />} label="Fotos" active={activeFilter === 'photos'} onClick={() => {setActiveFilter('photos'); setIsSidebarOpen(false);}} />
-                            <SidebarItem icon={<Video size={18} />} label="Vídeos" active={activeFilter === 'videos'} onClick={() => {setActiveFilter('videos'); setIsSidebarOpen(false);}} />
+                        {/* Área de Rolagem Flexível (Apenas Pastas e Itens) */}
+                        <nav className="px-4 space-y-1 flex-1 overflow-y-auto min-h-0 scrollbar-thin scrollbar-thumb-slate-700">
+                            <SidebarItem icon={<Grid size={18}/>} label="Tudo" active={activeFilter==='all'} onClick={()=>setActiveFilter('all')} />
+                            <SidebarItem icon={<ImageIcon size={18}/>} label="Imagens" active={activeFilter==='image'} onClick={()=>setActiveFilter('image')} />
+                            <SidebarItem icon={<Video size={18}/>} label="Vídeos" active={activeFilter==='video'} onClick={()=>setActiveFilter('video')} />
+                            <SidebarItem icon={<FileText size={18}/>} label="Documentos" active={activeFilter==='document'} onClick={()=>setActiveFilter('document')} />
                             
-                            <div className="flex items-center justify-between px-3 mt-6 mb-2">
-                                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Pastas</p>
-                                <button onClick={() => setShowNewFolderModal(true)} className="text-slate-500 hover:text-white"><Plus size={14}/></button>
+                            <div className="pt-6 pb-2 px-2 flex items-center justify-between text-xs font-semibold text-slate-500 uppercase tracking-wider sticky top-0 bg-slate-900 z-10">
+                                <span>Minhas Pastas</span>
+                                <button onClick={() => setShowNewFolderModal(true)} className="hover:text-white"><FolderPlus size={14}/></button>
                             </div>
                             
-                            <SidebarItem icon={<Briefcase size={18} />} label="Trabalho" active={activeFilter === 'work'} onClick={() => {setActiveFilter('work'); setIsSidebarOpen(false);}} />
-                            <SidebarItem icon={<Plane size={18} />} label="Viagens" active={activeFilter === 'travel'} onClick={() => {setActiveFilter('travel'); setIsSidebarOpen(false);}} />
-                            {customFolders.map(folder => (
-                                <SidebarItem key={folder} icon={<FolderOpen size={18} />} label={folder} active={activeFilter === folder} onClick={() => {setActiveFilter(folder); setIsSidebarOpen(false);}} />
+                            {folders.map(folder => (
+                                <div key={folder.id} className="group relative flex items-center">
+                                    <SidebarItem 
+                                        icon={<FolderOpen size={18}/>} 
+                                        label={folder.name} 
+                                        active={activeFilter===folder.id} 
+                                        onClick={()=>setActiveFilter(folder.id)} 
+                                    />
+                                    <button onClick={(e) => { e.stopPropagation(); handleDeleteFolder(folder.id); }} className="absolute right-2 p-1.5 text-slate-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"><X size={14}/></button>
+                                </div>
                             ))}
+                            {folders.length === 0 && <p className="text-xs text-slate-600 px-3 italic">Nenhuma pasta criada</p>}
                         </nav>
                         
-                        <div className="p-4 bg-slate-900 border-t border-slate-700 space-y-2">
-                            {installPrompt && (
-                                <button onClick={handleInstallClick} className="w-full flex items-center justify-center gap-2 p-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-xs">
-                                    <DownloadCloud size={14} /> Instalar App
-                                </button>
-                            )}
-                            <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 p-2 text-red-400 hover:bg-red-900/20 rounded text-xs transition-colors">
-                                <LogOut size={14} /> Sair
-                            </button>
+                        {/* Configurações e Rodapé Fixos no Fundo */}
+                        <div className="flex-shrink-0 bg-slate-900 pt-2 border-t border-slate-800">
+                             <div className="px-4 pb-2">
+                                <p className="px-2 text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Sistema</p>
+                                <SidebarItem icon={<Settings size={18}/>} label="Backup & Config" onClick={()=>setShowSettings(true)} />
+                            </div>
+
+                            <div className="p-4 border-t border-slate-800 bg-slate-900">
+                                <div className="flex items-center gap-3 mb-3">
+                                    <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-500 to-purple-500 flex items-center justify-center text-xs font-bold text-white">
+                                        {user.email ? user.email[0].toUpperCase() : 'U'}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-medium truncate">{user.email}</p>
+                                        <p className="text-[10px] text-slate-500">Online</p>
+                                    </div>
+                                </div>
+                                <button onClick={() => signOut(auth)} className="w-full flex items-center justify-center gap-2 text-xs text-slate-400 hover:text-white py-2 border border-slate-700 rounded-lg hover:bg-slate-800 transition"><LogOut size={14}/> Sair</button>
+                            </div>
                         </div>
                     </aside>
 
-                    {/* Main Area */}
-                    <main className="flex-1 flex flex-col min-w-0 h-full relative">
-                        <header className="h-16 border-b border-slate-700 flex items-center justify-between px-4 md:px-6 bg-slate-800/80 backdrop-blur-md z-30 sticky top-0">
-                            <div className="flex items-center gap-3 flex-1">
-                                <button onClick={() => setIsSidebarOpen(true)} className="md:hidden p-2 text-slate-300 hover:bg-slate-700 rounded-lg">
-                                    <Menu size={20} />
-                                </button>
-                                <div className="relative group w-full max-w-md">
-                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                                    <input 
-                                        type="text" placeholder="Buscar..." 
-                                        className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-9 pr-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition-all"
-                                        value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-                                    />
+                    <main className="flex-1 flex flex-col min-w-0 relative bg-[#0f172a]">
+                        <header className="h-16 border-b border-slate-800 flex items-center justify-between px-4 sticky top-0 bg-[#0f172a]/80 backdrop-blur-xl z-20">
+                            <div className="flex items-center gap-4 flex-1">
+                                <button onClick={() => setSidebarOpen(true)} className="md:hidden text-slate-400"><Menu size={24}/></button>
+                                <div className="relative w-full max-w-md hidden sm:block">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16}/>
+                                    <input type="text" placeholder="Buscar..." className="w-full bg-slate-800 border-none rounded-full py-2 pl-10 pr-4 text-sm text-slate-200 focus:ring-2 focus:ring-blue-500/50 outline-none transition-all placeholder:text-slate-600" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
                                 </div>
                             </div>
-
-                            <div className="flex items-center gap-3 ml-2">
-                                <div className="hidden sm:flex bg-slate-700 rounded-lg p-1">
-                                    <button className={`p-1.5 rounded ${viewMode==='grid'?'bg-slate-600 shadow':''}`} onClick={()=>setViewMode('grid')}><Grid size={16}/></button>
-                                    <button className={`p-1.5 rounded ${viewMode==='list'?'bg-slate-600 shadow':''}`} onClick={()=>setViewMode('list')}><List size={16}/></button>
+                            <div className="flex items-center gap-2">
+                                <div className="bg-slate-800 rounded-lg p-1 flex">
+                                    <button onClick={()=>setViewMode('grid')} className={`p-2 rounded-md transition ${viewMode==='grid' ? 'bg-slate-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}><Grid size={18}/></button>
+                                    <button onClick={()=>setViewMode('list')} className={`p-2 rounded-md transition ${viewMode==='list' ? 'bg-slate-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}><List size={18}/></button>
                                 </div>
-                                <label className={`flex items-center gap-2 px-3 py-2 sm:px-4 sm:py-2 rounded-lg cursor-pointer transition-all ${uploading ? 'bg-slate-600 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-900/20 active:scale-95'}`}>
-                                    {uploading ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <Upload size={18} className="text-white" />}
-                                    <span className="text-sm font-medium text-white hidden sm:inline">Upload</span>
-                                    <input type="file" multiple className="hidden" onChange={handleFileUpload} disabled={uploading} accept="image/*,video/*" />
-                                </label>
                             </div>
                         </header>
 
-                        <div className="flex-1 overflow-y-auto p-4 md:p-6 scrollbar-hide pb-20">
+                        <div className="flex-1 overflow-y-auto p-4 md:p-6 scrollbar-thin scrollbar-thumb-slate-700" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); handleFileUpload(e); }}>
                             {mediaItems.length === 0 ? (
-                                <div className="h-full flex flex-col items-center justify-center text-slate-500 animate-fade-in">
-                                    <div className="p-4 bg-slate-800 rounded-full mb-4"><Cloud size={48} className="opacity-50 text-blue-500" /></div>
-                                    <p className="text-lg">Sua nuvem está vazia.</p>
-                                    <p className="text-sm opacity-60">Faça upload para começar.</p>
+                                <div className="h-full flex flex-col items-center justify-center text-slate-500 pb-20">
+                                    <div className="w-24 h-24 bg-slate-800 rounded-full flex items-center justify-center mb-6 animate-bounce">
+                                        <Cloud size={48} className="text-slate-600" />
+                                    </div>
+                                    <h3 className="text-xl font-semibold text-slate-300">Nenhum arquivo ainda</h3>
+                                    <p className="max-w-xs text-center mt-2 text-slate-500">Seus arquivos ficam salvos neste dispositivo.</p>
+                                    <button onClick={()=>document.querySelector('input[type="file"]').click()} className="mt-6 text-blue-400 hover:text-blue-300 font-medium">Upload Agora</button>
                                 </div>
                             ) : (
                                 <>
-                                    <div className="mb-4 flex justify-between items-end">
-                                        <h2 className="text-xl font-bold text-slate-200 capitalize tracking-tight">{activeFilter === 'all' ? 'Galeria' : activeFilter}</h2>
-                                        <span className="text-xs text-slate-500 font-mono">{filteredItems.length} ARQUIVOS</span>
+                                    <div className="flex items-end justify-between mb-6">
+                                        <div>
+                                            <h2 className="text-2xl font-bold text-white capitalize flex items-center gap-2">
+                                                {activeFilter.startsWith('folder_') && <FolderOpen className="text-blue-500"/>}
+                                                {currentFolderName}
+                                            </h2>
+                                            <p className="text-sm text-slate-500 mt-1">{filteredItems.length} itens • {formatBytes(filteredItems.reduce((a,b) => a + (b.size||0), 0))} armazenados</p>
+                                        </div>
                                     </div>
-                                    
-                                    {viewMode === 'grid' ? (
-                                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:gap-4">
+
+                                    {filteredItems.length === 0 ? (
+                                        <div className="text-center py-20 text-slate-600"><p>Nenhum item encontrado.</p></div>
+                                    ) : viewMode === 'grid' ? (
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
                                             {filteredItems.map(item => (
-                                                <div key={item.id} onClick={() => setSelectedItem(item)} className="group relative bg-slate-800 rounded-xl overflow-hidden aspect-square cursor-pointer shadow-md hover:shadow-xl transition-all hover:-translate-y-1">
-                                                    {item.type === 'image' ? <img src={item.url} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center bg-slate-900"><Video size={32} className="text-slate-600"/></div>}
-                                                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-3">
-                                                        <p className="text-white text-xs font-medium truncate">{item.name}</p>
-                                                    </div>
+                                                <div key={item.id} onClick={() => setSelectedItem(item)} className="aspect-square rounded-2xl overflow-hidden cursor-pointer shadow-lg hover:shadow-2xl hover:scale-[1.02] transition-all duration-300 border border-slate-700/50">
+                                                    <MediaThumbnail item={item} viewMode="grid" />
                                                 </div>
                                             ))}
                                         </div>
                                     ) : (
                                         <div className="space-y-2">
                                             {filteredItems.map(item => (
-                                                <div key={item.id} onClick={() => setSelectedItem(item)} className="flex items-center gap-4 p-3 bg-slate-800/50 hover:bg-slate-800 rounded-lg border border-transparent hover:border-slate-700 cursor-pointer transition-colors">
-                                                    <div className="w-12 h-12 rounded-lg bg-slate-900 overflow-hidden flex-shrink-0">
-                                                        {item.type === 'image' ? <img src={item.url} className="w-full h-full object-cover" /> : <div className="flex items-center justify-center h-full"><Video size={20} className="text-slate-500"/></div>}
-                                                    </div>
+                                                <div key={item.id} onClick={() => setSelectedItem(item)} className="flex items-center gap-4 p-3 bg-slate-800/40 hover:bg-slate-800 rounded-xl border border-transparent hover:border-slate-700 cursor-pointer transition-all group">
+                                                    <MediaThumbnail item={item} viewMode="list" />
                                                     <div className="flex-1 min-w-0">
-                                                        <p className="text-sm font-medium text-white truncate">{item.name}</p>
-                                                        <p className="text-xs text-slate-500">{item.date} • {formatBytes(item.size)}</p>
+                                                        <h4 className="text-white font-medium truncate">{item.name}</h4>
+                                                        <p className="text-sm text-slate-500">{new Date(item.createdAt).toLocaleDateString()} • {formatBytes(item.size)}</p>
                                                     </div>
                                                 </div>
                                             ))}
@@ -683,64 +721,73 @@
                         </div>
                     </main>
 
-                    {/* New Folder Modal */}
-                    {showNewFolderModal && (
-                        <div className="fixed inset-0 z-[100] bg-black/60 flex items-center justify-center backdrop-blur-sm p-4 animate-fade-in">
-                            <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-2xl w-full max-w-sm">
-                                <h3 className="text-lg font-bold text-white mb-4">Nova Pasta</h3>
-                                <input 
-                                    autoFocus
-                                    className="w-full bg-slate-900 border border-slate-600 rounded-xl p-3 text-white text-sm mb-4 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
-                                    placeholder="Nome da pasta..."
-                                    value={newFolderName}
-                                    onChange={(e) => setNewFolderName(e.target.value)}
-                                    onKeyDown={(e) => e.key === 'Enter' && handleCreateFolder()}
-                                />
-                                <div className="flex justify-end gap-3">
-                                    <button onClick={() => setShowNewFolderModal(false)} className="px-4 py-2 text-sm text-slate-400 hover:text-white transition-colors">Cancelar</button>
-                                    <button onClick={handleCreateFolder} className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium shadow-lg shadow-blue-900/30">Criar</button>
+                    {/* LIGHTBOX / VIEWER */}
+                    {selectedItem && (
+                        <div className="fixed inset-0 z-50 bg-black/95 backdrop-blur-xl flex flex-col animate-fade-in">
+                             <div className="flex items-center justify-between p-4 bg-gradient-to-b from-black/50 to-transparent absolute top-0 w-full z-10">
+                                <span className="text-white/80 text-sm truncate max-w-xs">{selectedItem.name}</span>
+                                <div className="flex gap-2">
+                                    <button onClick={() => handleDelete(selectedItem.id)} className="p-2 text-white/70 hover:text-red-400 bg-white/10 rounded-full transition"><Trash2 size={20}/></button>
+                                    <button onClick={() => setSelectedItem(null)} className="p-2 text-white/70 hover:text-white bg-white/10 rounded-full transition"><X size={20}/></button>
                                 </div>
                             </div>
-                        </div>
-                    )}
-
-                    {/* Lightbox */}
-                    {selectedItem && (
-                        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-md animate-fade-in">
-                            <button className="absolute top-4 right-4 p-2 text-white/50 hover:text-white bg-white/10 rounded-full hover:bg-white/20 transition-all z-10" onClick={() => setSelectedItem(null)}><X size={24}/></button>
                             
-                            <div className="w-full h-full flex flex-col items-center justify-center p-4">
-                                <div className="relative max-w-5xl w-full max-h-[80vh] flex items-center justify-center">
-                                    {selectedItem.type === 'image' ? (
-                                        <img src={selectedItem.url} className="max-w-full max-h-full object-contain rounded-lg shadow-2xl" />
-                                    ) : (
-                                        <video src={selectedItem.url} controls autoPlay className="max-w-full max-h-full rounded-lg shadow-2xl" />
-                                    )}
-                                </div>
-                                
-                                <div className="mt-6 text-center">
-                                    <h3 className="text-white text-lg font-medium mb-1">{selectedItem.name}</h3>
-                                    <div className="flex items-center justify-center gap-3">
-                                        <span className="px-2 py-0.5 bg-slate-800 border border-slate-700 rounded text-xs text-slate-300">{selectedItem.category}</span>
-                                        <button onClick={() => {
-                                            if(confirm("Baixar arquivo original?")) {
-                                                const a = document.createElement('a');
-                                                a.href = selectedItem.url;
-                                                a.target = "_blank"; // Abre em nova aba para download direto
-                                                a.download = selectedItem.name;
-                                                a.click();
-                                            }
-                                        }} className="text-blue-400 hover:text-blue-300 text-sm flex items-center gap-1"><DownloadCloud size={14}/> Baixar Original</button>
-                                        <button onClick={() => {
-                                            if(confirm("Excluir permanentemente?")) {
-                                                deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'media', selectedItem.id));
-                                                setSelectedItem(null);
-                                                showNotification("Arquivo excluído.");
-                                            }
-                                        }} className="text-red-400 hover:text-red-300 text-sm flex items-center gap-1"><Trash2 size={14}/> Excluir</button>
+                            <div className="flex-1 flex flex-col items-center justify-center p-4">
+                                {selectedItem.type === 'image' ? (
+                                    <MediaThumbnail item={selectedItem} viewMode="grid" />
+                                ) : selectedItem.type === 'video' ? (
+                                    // Para vídeo no lightbox, precisamos criar URL temporária
+                                    (() => {
+                                        const url = selectedItem.data instanceof Blob ? URL.createObjectURL(selectedItem.data) : selectedItem.data;
+                                        return <video src={url} controls autoPlay className="max-w-full max-h-[70vh] rounded shadow-2xl" />;
+                                    })()
+                                ) : (
+                                    // Document View
+                                    <div className="flex flex-col items-center justify-center bg-slate-800 p-10 rounded-3xl border border-slate-700">
+                                        <div className="bg-slate-700 p-6 rounded-2xl mb-4">
+                                            <FileText size={64} className="text-blue-400"/>
+                                        </div>
+                                        <h3 className="text-xl font-bold text-white mb-2 max-w-md text-center">{selectedItem.name}</h3>
+                                        <p className="text-slate-400 mb-6">{formatBytes(selectedItem.size)} • {selectedItem.mimeType || 'Documento'}</p>
+                                        <a 
+                                            href={selectedItem.data instanceof Blob ? URL.createObjectURL(selectedItem.data) : selectedItem.data} 
+                                            download={selectedItem.name} 
+                                            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-8 py-3 rounded-full font-bold shadow-lg shadow-blue-900/40 transition hover:-translate-y-1"
+                                        >
+                                            <DownloadCloud size={20}/> Baixar Arquivo
+                                        </a>
+                                    </div>
+                                )}
+                            </div>
+
+                            {selectedItem.type !== 'document' && (
+                                <div className="p-6 pb-8 bg-gradient-to-t from-black/80 to-transparent">
+                                    <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+                                        {folders.length > 0 && (
+                                            <div className="relative group">
+                                                <div className="flex items-center gap-2 bg-slate-800 text-white px-4 py-2 rounded-full cursor-pointer hover:bg-slate-700">
+                                                    <Move size={16} />
+                                                    <span className="text-sm">Mover para...</span>
+                                                </div>
+                                                <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 w-40 bg-slate-800 rounded-lg shadow-xl overflow-hidden hidden group-hover:block border border-slate-700">
+                                                    <button onClick={() => handleMoveItem(selectedItem, null)} className="w-full text-left px-4 py-2 text-xs hover:bg-slate-700 text-slate-300">Galeria Principal</button>
+                                                    {folders.map(f => (
+                                                        <button key={f.id} onClick={() => handleMoveItem(selectedItem, f.id)} className="w-full text-left px-4 py-2 text-xs hover:bg-slate-700 text-white truncate">{f.name}</button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <a 
+                                            href={selectedItem.data instanceof Blob ? URL.createObjectURL(selectedItem.data) : selectedItem.data} 
+                                            download={selectedItem.name} 
+                                            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-full font-medium shadow-lg shadow-blue-900/40 transition hover:-translate-y-1"
+                                        >
+                                            <DownloadCloud size={20}/> Baixar
+                                        </a>
                                     </div>
                                 </div>
-                            </div>
+                            )}
                         </div>
                     )}
                 </div>
@@ -751,28 +798,8 @@
             return (
                 <button onClick={onClick} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg mb-1 transition-all ${active ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'}`}>
                     {React.cloneElement(icon, { size: 18, className: active ? 'text-white' : '' })}
-                    <span className="text-sm font-medium truncate text-left flex-1">{label}</span>
+                    <span className="text-sm font-medium truncate">{label}</span>
                 </button>
-            );
-        }
-
-        function PermissionErrorScreen() {
-            // Regras apenas para Firestore
-            const rules = `rules_version = '2';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    match /{document=**} {\n      allow read, write: if request.auth != null;\n    }\n  }\n}`;
-            return (
-                <div className="h-screen bg-slate-900 flex items-center justify-center p-4">
-                    <div className="bg-slate-800 p-8 rounded-2xl max-w-lg border border-yellow-500/30 w-full shadow-2xl">
-                        <ShieldCheck className="mx-auto text-yellow-500 mb-4" size={48} />
-                        <h2 className="text-xl font-bold text-white text-center mb-2">Configuração Pendente</h2>
-                        <p className="text-slate-400 text-sm text-center mb-4">
-                            Cole estas regras no Console do Firebase (Aba Firestore Database &gt; Rules) para liberar o acesso:
-                        </p>
-                        <div className="bg-black/50 p-4 rounded-xl text-green-400 font-mono text-xs overflow-x-auto relative group border border-slate-700 h-48">
-                            <pre>{rules}</pre>
-                            <button onClick={()=>navigator.clipboard.writeText(rules)} className="absolute top-2 right-2 bg-slate-700 p-1.5 rounded hover:bg-slate-600 text-white transition-colors"><Copy size={14}/></button>
-                        </div>
-                    </div>
-                </div>
             );
         }
 
