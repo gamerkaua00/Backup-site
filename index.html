@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SmartVault - Local & Seguro</title>
+    <title>SmartVault - Premium Cloud</title>
     
     <!-- Meta Tags PWA -->
     <meta name="theme-color" content="#0f172a">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="description" content="Armazenamento seguro e local de fotos e documentos.">
+    <meta name="description" content="Backup seguro com qualidade original.">
 
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -20,9 +20,24 @@
             theme: {
                 extend: {
                     fontFamily: { sans: ['Inter', 'sans-serif'] },
-                    animation: { 'fade-in': 'fadeIn 0.3s ease-out' },
+                    animation: { 
+                        'fade-in': 'fadeIn 0.3s ease-out',
+                        'slide-up': 'slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1)',
+                        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                    },
                     keyframes: {
-                        fadeIn: { '0%': { opacity: '0' }, '100%': { opacity: '1' } }
+                        fadeIn: { '0%': { opacity: '0' }, '100%': { opacity: '1' } },
+                        slideUp: { '0%': { transform: 'translateY(20px)', opacity: '0' }, '100%': { transform: 'translateY(0)', opacity: '1' } }
+                    },
+                    colors: {
+                        brand: {
+                            500: '#6366f1', // Indigo
+                            600: '#4f46e5',
+                            700: '#4338ca',
+                        },
+                        accent: {
+                            500: '#10b981', // Emerald
+                        }
                     }
                 }
             }
@@ -47,42 +62,38 @@
     <!-- Babel -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    <!-- PWA MANIFEST GENERATOR -->
-    <script>
-        const manifest = {
-            "name": "SmartVault Local",
-            "short_name": "SmartVault",
-            "start_url": ".",
-            "display": "standalone",
-            "background_color": "#0f172a",
-            "theme_color": "#0f172a",
-            "icons": [
-                {
-                    "src": "https://cdn-icons-png.flaticon.com/512/6409/6409867.png",
-                    "sizes": "512x512",
-                    "type": "image/png"
-                }
-            ]
-        };
-        try {
-            const stringManifest = JSON.stringify(manifest);
-            const blob = new Blob([stringManifest], {type: 'application/json'});
-            const manifestURL = URL.createObjectURL(blob);
-            const link = document.createElement('link');
-            link.rel = 'manifest';
-            link.href = manifestURL;
-            document.head.appendChild(link);
-        } catch (e) {
-            console.warn("Manifest generation failed", e);
-        }
-    </script>
-
     <style>
-        body { background-color: #0f172a; color: #f1f5f9; overflow: hidden; }
+        body { background-color: #020617; color: #f8fafc; overflow: hidden; }
+        
+        /* Scrollbar Moderna */
         ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: #1e293b; }
-        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
-        .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.05); }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(99, 102, 241, 0.3); border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(99, 102, 241, 0.6); }
+        
+        /* Efeitos de Vidro */
+        .glass-panel { 
+            background: rgba(15, 23, 42, 0.6); 
+            backdrop-filter: blur(12px); 
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255,255,255,0.08); 
+        }
+        .glass-sidebar {
+            background: rgba(2, 6, 23, 0.85);
+            backdrop-filter: blur(20px);
+            border-right: 1px solid rgba(255,255,255,0.05);
+        }
+        .glass-card {
+            background: rgba(30, 41, 59, 0.4);
+            border: 1px solid rgba(255,255,255,0.05);
+            transition: all 0.3s ease;
+        }
+        .glass-card:hover {
+            background: rgba(30, 41, 59, 0.7);
+            border-color: rgba(99, 102, 241, 0.3);
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px -10px rgba(0,0,0,0.5);
+        }
     </style>
 </head>
 <body>
@@ -96,7 +107,8 @@
             Search, FolderOpen, Star, Cloud, Menu, X, DownloadCloud, 
             Settings, HardDrive, LogOut, Plus, RefreshCw, Smartphone, 
             ShieldCheck, AlertTriangle, FileJson, UploadCloud, FolderPlus, Move,
-            FileText, File as FileGeneric, Eye, Archive, Lock, Copy, User, Mail, Key
+            FileText, File as FileGeneric, Eye, Archive, Lock, Copy, User, Mail, Key,
+            MoreVertical, Edit2, Check, XCircle
         } from 'lucide-react';
         import { initializeApp } from 'firebase/app';
         import { 
@@ -107,7 +119,7 @@
         import { openDB } from 'idb';
         import JSZip from 'jszip';
 
-        // --- DATABASE LOCAL (IndexedDB) ---
+        // --- CONFIGURAÇÃO BD LOCAL ---
         const DB_NAME = 'SmartVaultDB';
         const STORE_NAME = 'media_store';
 
@@ -123,27 +135,12 @@
             });
         };
 
-        const saveToDB = async (item) => {
-            const db = await initDB();
-            return db.put(STORE_NAME, item);
-        };
+        const saveToDB = async (item) => (await initDB()).put(STORE_NAME, item);
+        const getAllFromDB = async () => (await initDB()).getAll(STORE_NAME);
+        const deleteFromDB = async (id) => (await initDB()).delete(STORE_NAME, id);
+        const clearDB = async () => (await initDB()).clear(STORE_NAME);
 
-        const getAllFromDB = async () => {
-            const db = await initDB();
-            return db.getAll(STORE_NAME);
-        };
-
-        const deleteFromDB = async (id) => {
-            const db = await initDB();
-            return db.delete(STORE_NAME, id);
-        };
-
-        const clearDB = async () => {
-            const db = await initDB();
-            return db.clear(STORE_NAME);
-        };
-
-        // --- FIREBASE CONFIG (SEU PROJETO REAL) ---
+        // --- CONFIGURAÇÃO FIREBASE ---
         const firebaseConfig = {
             apiKey: "AIzaSyBCkh9J-RqQaM7nHxNbJjbs74TwrMh-E6s",
             authDomain: "whatsapp-20-153cc.firebaseapp.com",
@@ -159,7 +156,16 @@
             auth = getAuth(app);
         } catch (e) { console.warn("Firebase config error", e); }
 
-        // --- COMPONENTE THUMBNAIL INTELIGENTE ---
+        // --- COMPONENTES AUXILIARES ---
+        const formatBytes = (bytes, decimals = 2) => {
+            if (!+bytes) return '0 Bytes';
+            const k = 1024;
+            const dm = decimals < 0 ? 0 : decimals;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+        };
+
         const MediaThumbnail = ({ item, viewMode }) => {
             const [url, setUrl] = useState('');
 
@@ -171,60 +177,53 @@
                 } else {
                     setUrl(item.data);
                 }
-                return () => {
-                    if (objectUrl) URL.revokeObjectURL(objectUrl);
-                };
+                return () => { if (objectUrl) URL.revokeObjectURL(objectUrl); };
             }, [item.data]);
 
             const Icon = item.type === 'video' ? Video : (item.type === 'document' ? FileText : ImageIcon);
             
             if (viewMode === 'list') {
                 return (
-                    <div className="w-16 h-16 rounded-lg bg-slate-900 overflow-hidden flex-shrink-0 flex items-center justify-center border border-slate-700">
+                    <div className="w-14 h-14 rounded-lg bg-slate-800/50 overflow-hidden flex-shrink-0 flex items-center justify-center border border-white/10">
                         {item.type === 'image' ? (
                             <img src={url} className="w-full h-full object-cover" loading="lazy" />
                         ) : (
-                            <Icon size={24} className={item.type === 'document' ? 'text-blue-400' : 'text-slate-500'} />
+                            <Icon size={20} className={item.type === 'document' ? 'text-brand-400' : 'text-slate-400'} />
                         )}
                     </div>
                 );
             }
 
             return (
-                <div className="w-full h-full relative group bg-slate-800">
+                <div className="w-full h-full relative group bg-slate-900/50">
                     {item.type === 'image' ? (
-                        <img src={url} className="w-full h-full object-cover" loading="lazy" />
+                        <img src={url} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" loading="lazy" />
                     ) : item.type === 'video' ? (
-                        <div className="w-full h-full flex items-center justify-center bg-slate-900">
-                            <Video size={32} className="text-slate-600 group-hover:text-blue-500 transition-colors"/>
+                        <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900/80">
+                            <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center backdrop-blur-sm mb-2 group-hover:bg-brand-500 transition-colors">
+                                <Video size={24} className="text-white"/>
+                            </div>
+                            <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Vídeo</span>
                         </div>
                     ) : (
-                        <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900 p-4 text-center">
-                            <FileText size={40} className="text-blue-500 mb-2"/>
-                            <span className="text-[10px] text-slate-400 font-mono bg-slate-800 px-1 rounded truncate w-full">
+                        <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900/80 p-4 text-center">
+                            <FileText size={36} className="text-brand-400 mb-3"/>
+                            <span className="text-[10px] text-white/70 font-mono bg-white/5 px-2 py-1 rounded truncate w-full max-w-[80%]">
                                 {item.name.split('.').pop().toUpperCase()}
                             </span>
                         </div>
                     )}
                     
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-3">
-                        <p className="text-white text-xs font-medium truncate">{item.name}</p>
+                    {/* Overlay Elegante */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-4">
+                        <p className="text-white text-sm font-medium truncate drop-shadow-md">{item.name}</p>
                         <div className="flex justify-between items-center mt-1">
-                            <p className="text-slate-400 text-[10px]">{formatBytes(item.size)}</p>
-                            {item.type === 'document' && <span className="px-1.5 py-0.5 bg-blue-600 text-[9px] rounded text-white">DOC</span>}
+                            <p className="text-slate-300 text-[10px]">{formatBytes(item.size)}</p>
+                            <span className="px-1.5 py-0.5 bg-brand-500/80 text-[9px] rounded text-white font-bold tracking-wide">HD</span>
                         </div>
                     </div>
                 </div>
             );
-        };
-
-        const formatBytes = (bytes, decimals = 2) => {
-            if (!+bytes) return '0 Bytes';
-            const k = 1024;
-            const dm = decimals < 0 ? 0 : decimals;
-            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB'];
-            const i = Math.floor(Math.log(bytes) / Math.log(k));
-            return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
         };
 
         function App() {
@@ -247,25 +246,24 @@
             const [diskUsage, setDiskUsage] = useState({ used: 0, total: 0 });
             
             const [notification, setNotification] = useState(null);
-            const [authError, setAuthError] = useState(null); 
+            const [authError, setAuthError] = useState(null);
+            
+            // Modais e UI
             const [sidebarOpen, setSidebarOpen] = useState(false);
             const [showSettings, setShowSettings] = useState(false);
             const [showNewFolderModal, setShowNewFolderModal] = useState(false);
-            const [newFolderName, setNewFolderName] = useState('');
+            const [folderNameInput, setFolderNameInput] = useState('');
+            const [editingFolder, setEditingFolder] = useState(null); // { id, name }
 
             useEffect(() => {
                 if(auth) {
                     const unsub = onAuthStateChanged(auth, (u) => {
                         setUser(u);
-                        if(u) {
-                            loadData();
-                            setAuthError(null);
-                        }
+                        if(u) { loadData(); setAuthError(null); }
                     });
                     return () => unsub();
                 } else {
-                    // Fallback para quando o Firebase falha completamente
-                    setUser({ uid: 'local-user', email: 'Modo Offline' });
+                    setUser({ uid: 'local-user', email: 'Offline' });
                     loadData();
                 }
             }, []);
@@ -280,7 +278,7 @@
                     items.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
                     setMediaItems(items);
                     updateStorageEstimate();
-                } catch (err) { console.error("Erro ao carregar DB:", err); }
+                } catch (err) { console.error("Erro DB:", err); }
             };
 
             const updateStorageEstimate = async () => {
@@ -290,32 +288,59 @@
                 }
             };
 
-            const handleCreateFolder = async () => {
-                if (!newFolderName.trim()) return;
-                const newFolder = { id: `folder_${Date.now()}`, name: newFolderName.trim() };
-                const updatedFolders = [...folders, newFolder];
-                setFolders(updatedFolders);
-                await saveToDB({ id: 'settings_folders', list: updatedFolders });
-                setNewFolderName('');
-                setShowNewFolderModal(false);
-                showNotification(`Pasta "${newFolder.name}" criada!`);
+            // --- GERENCIAMENTO DE PASTAS ---
+            const openFolderModal = (folder = null) => {
+                if (folder) {
+                    setEditingFolder(folder);
+                    setFolderNameInput(folder.name);
+                } else {
+                    setEditingFolder(null);
+                    setFolderNameInput('');
+                }
+                setShowNewFolderModal(true);
             };
 
-            const handleDeleteFolder = async (folderId) => {
-                if (!confirm("Excluir pasta? Os arquivos voltarão para a Galeria principal.")) return;
+            const handleSaveFolder = async () => {
+                if (!folderNameInput.trim()) return;
+                
+                let updatedFolders;
+                if (editingFolder) {
+                    // Editar existente
+                    updatedFolders = folders.map(f => f.id === editingFolder.id ? { ...f, name: folderNameInput.trim() } : f);
+                    showNotification(`Pasta renomeada para "${folderNameInput}"`);
+                } else {
+                    // Criar nova
+                    const newFolder = { id: `folder_${Date.now()}`, name: folderNameInput.trim() };
+                    updatedFolders = [...folders, newFolder];
+                    showNotification(`Pasta "${newFolder.name}" criada!`);
+                }
+
+                setFolders(updatedFolders);
+                await saveToDB({ id: 'settings_folders', list: updatedFolders });
+                setFolderNameInput('');
+                setEditingFolder(null);
+                setShowNewFolderModal(false);
+            };
+
+            const handleDeleteFolder = async (folderId, folderName) => {
+                if (!confirm(`Excluir a pasta "${folderName}"? Os arquivos voltarão para a Galeria principal.`)) return;
+                
                 const updatedFolders = folders.filter(f => f.id !== folderId);
                 setFolders(updatedFolders);
                 await saveToDB({ id: 'settings_folders', list: updatedFolders });
+                
                 const itemsToUpdate = mediaItems.filter(i => i.folderId === folderId);
                 for (let item of itemsToUpdate) {
                     const updatedItem = { ...item, folderId: null };
                     await saveToDB(updatedItem);
                 }
+                
                 if (activeFilter === folderId) setActiveFilter('all');
                 loadData();
                 showNotification("Pasta excluída.");
             };
 
+            // --- AÇÕES GERAIS ---
             const handleMoveItem = async (item, targetFolderId) => {
                 const updatedItem = { ...item, folderId: targetFolderId };
                 await saveToDB(updatedItem);
@@ -352,128 +377,82 @@
 
                         await saveToDB(newItem);
                         count++;
-                    } catch (error) {
-                        console.error("Erro upload:", error);
-                        showNotification(`Erro ao salvar ${file.name}`, 'error');
-                    }
+                    } catch (error) { console.error(error); }
                 }
-
                 await loadData();
                 setIsUploading(false);
-                showNotification(`${count} arquivos salvos!`);
+                showNotification(`${count} arquivos salvos em qualidade original!`);
             };
 
+            // --- BACKUP ---
             const handleExportBackup = async () => {
-                if(!confirm("Gerar Backup ZIP? Isso garante melhor qualidade e organização.")) return;
+                if(!confirm("Gerar Backup ZIP?")) return;
                 setIsExporting(true);
                 try {
                     const zip = new JSZip();
                     const allData = await getAllFromDB();
-                    
                     const settingsFolders = allData.find(i => i.id === 'settings_folders');
-                    const foldersList = settingsFolders ? settingsFolders.list : [];
                     const mediaItems = allData.filter(i => i.id !== 'settings_folders');
                     
                     const metadata = {
                         version: "3.0",
                         exportedAt: new Date().toISOString(),
-                        folders: foldersList,
-                        items: mediaItems.map(item => ({
-                            id: item.id,
-                            name: item.name,
-                            type: item.type,
-                            size: item.size,
-                            mimeType: item.mimeType,
-                            folderId: item.folderId,
-                            createdAt: item.createdAt
-                        }))
+                        folders: settingsFolders ? settingsFolders.list : [],
+                        items: mediaItems.map(({data, ...rest}) => rest) // Salva metadados sem o blob
                     };
                     
-                    zip.file("smartvault_structure.json", JSON.stringify(metadata, null, 2));
+                    zip.file("smartvault_structure.json", JSON.stringify(metadata));
                     const assets = zip.folder("assets");
                     
                     for (const item of mediaItems) {
-                        if (item.data instanceof Blob) {
-                             const ext = item.name.split('.').pop() || 'bin';
-                             assets.file(`${item.id}.${ext}`, item.data);
-                        } else if (typeof item.data === 'string') {
-                            const base64Data = item.data.split(',')[1];
-                            assets.file(`${item.id}_legacy.bin`, base64Data, {base64: true});
-                        }
+                        const ext = item.name.split('.').pop() || 'bin';
+                        if (item.data instanceof Blob) assets.file(`${item.id}.${ext}`, item.data);
+                        else if (typeof item.data === 'string') assets.file(`${item.id}_legacy.bin`, item.data.split(',')[1], {base64: true});
                     }
                     
                     const content = await zip.generateAsync({type:"blob"});
                     const url = URL.createObjectURL(content);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `SmartVault_Backup_${new Date().toLocaleDateString()}.zip`;
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    URL.revokeObjectURL(url);
-                    
-                    showNotification("Backup ZIP gerado com sucesso!", "success");
-                } catch (e) {
-                    console.error(e);
-                    showNotification("Erro no backup: " + e.message, "error");
-                } finally { setIsExporting(false); }
+                    const a = document.createElement('a'); a.href = url; a.download = `SmartVault_Backup_${new Date().toISOString().slice(0,10)}.zip`;
+                    document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+                    showNotification("Backup baixado!", "success");
+                } catch (e) { showNotification("Erro no backup: " + e.message, "error"); } 
+                finally { setIsExporting(false); }
             };
 
             const handleImportBackup = async (e) => {
                 const file = e.target.files[0];
-                if(!file) return;
-                if(!confirm("Restaurar backup ZIP? Isso irá mesclar os arquivos com os atuais.")) return;
-
+                if(!file || !confirm("Restaurar backup?")) return;
                 setIsImporting(true);
                 try {
                     const zip = new JSZip();
                     const loadedZip = await zip.loadAsync(file);
+                    const metaFile = loadedZip.file("smartvault_structure.json");
+                    if (!metaFile) throw new Error("Backup inválido");
                     
-                    const metadataFile = loadedZip.file("smartvault_structure.json");
-                    if (!metadataFile) throw new Error("Arquivo inválido (falta smartvault_structure.json)");
+                    const metadata = JSON.parse(await metaFile.async("string"));
                     
-                    const metadataStr = await metadataFile.async("string");
-                    const metadata = JSON.parse(metadataStr);
-                    
+                    // Restaurar Pastas
                     const currentFolders = folders;
-                    const backupFolders = metadata.folders || [];
+                    const newFolders = metadata.folders || [];
                     const uniqueFolders = [...currentFolders];
-                    backupFolders.forEach(bf => {
-                        if(!uniqueFolders.find(cf => cf.id === bf.id)) uniqueFolders.push(bf);
-                    });
+                    newFolders.forEach(nf => { if(!uniqueFolders.find(cf => cf.id === nf.id)) uniqueFolders.push(nf); });
                     await saveToDB({ id: 'settings_folders', list: uniqueFolders });
                     
+                    // Restaurar Arquivos
                     let count = 0;
                     for (const metaItem of metadata.items) {
                          const ext = metaItem.name.split('.').pop() || 'bin';
-                         let fileInZip = loadedZip.file(`assets/${metaItem.id}.${ext}`);
-                         if (!fileInZip) fileInZip = loadedZip.file(`assets/${metaItem.id}_legacy.bin`);
-                         
+                         let fileInZip = loadedZip.file(`assets/${metaItem.id}.${ext}`) || loadedZip.file(`assets/${metaItem.id}_legacy.bin`);
                          if (fileInZip) {
                              const blob = await fileInZip.async("blob");
-                             const newItem = { ...metaItem, data: blob };
-                             const existing = mediaItems.find(i => i.id === newItem.id);
-                             if(!existing) {
-                                await saveToDB(newItem);
-                                count++;
-                             }
+                             const existing = mediaItems.find(i => i.id === metaItem.id);
+                             if(!existing) { await saveToDB({ ...metaItem, data: blob }); count++; }
                          }
                     }
                     await loadData();
-                    showNotification(`${count} arquivos restaurados e organizados!`, "success");
-                } catch (err) {
-                    console.error(err);
-                    showNotification("Erro ao restaurar: " + err.message, "error");
-                } finally { setIsImporting(false); e.target.value = ''; }
-            };
-
-            const handleDelete = async (id) => {
-                if(confirm("Excluir permanentemente?")) {
-                    await deleteFromDB(id);
-                    setSelectedItem(null);
-                    loadData();
-                    showNotification("Item excluído.");
-                }
+                    showNotification(`${count} arquivos restaurados!`, "success");
+                } catch (err) { showNotification("Erro: " + err.message, "error"); } 
+                finally { setIsImporting(false); e.target.value = ''; }
             };
 
             const showNotification = (msg, type = 'success') => {
@@ -481,19 +460,15 @@
                 setTimeout(() => setNotification(null), 4000);
             };
 
-            // --- LÓGICA DE LOGIN COM GOOGLE ---
+            // --- LOGIN ---
             const handleLogin = async (method) => {
                 setAuthError(null);
+                const isBlob = window.location.protocol === 'blob:' || window.location.href.includes('scf.usercontent.goog');
                 
-                // Em ambientes de desenvolvimento (Canvas Preview), o Google Login falha por ser URL blob
-                const isBlobEnvironment = window.location.protocol === 'blob:' || window.location.href.includes('scf.usercontent.goog');
-                
-                if (method === 'google' && isBlobEnvironment) {
+                if (method === 'google' && isBlob) {
                     setAuthError({
-                        type: 'blob',
-                        title: "Modo Preview Detectado",
-                        msg: "O 'Entrar com Google' é bloqueado pelo Google em visualizações temporárias. Use 'Email/Senha' ou 'Visitante'. Em seu site final (GitHub Pages), o Google funcionará.",
-                        domain: "N/A"
+                        type: 'blob', title: "Modo Preview", 
+                        msg: "Google Login indisponível no modo preview. Use Email/Senha ou Visitante.", domain: "N/A"
                     });
                     return;
                 }
@@ -503,44 +478,13 @@
                     else if (method === 'anon') await signInAnonymously(auth);
                     else if (method === 'email') await signInWithEmailAndPassword(auth, email, password);
                 } catch (e) { 
-                    console.error("Auth Error:", e);
-                    
                     if (e.code === 'auth/operation-not-allowed') {
-                        setAuthError({
-                            type: 'provider',
-                            title: "Método Desativado",
-                            msg: `O login via ${method === 'google' ? 'Google' : 'Email/Senha'} não está ativado no seu Firebase.`,
-                            domain: "Ative em: Authentication > Sign-in method"
-                        });
-                    } else if (e.code === 'auth/unauthorized-domain' || (e.message && e.message.includes('unauthorized domain'))) {
-                        const currentDomain = window.location.hostname || window.location.host || window.location.href;
-                        setAuthError({
-                            type: 'domain',
-                            title: "Domínio Não Autorizado",
-                            msg: "Adicione este domínio no Firebase Console (Authentication > Settings > Authorized Domains):",
-                            domain: currentDomain
-                        });
+                        setAuthError({ type: 'provider', title: "Configuração Necessária", msg: `Habilite o login ${method} no Firebase Console.`, domain: "Console" });
+                    } else if (e.code === 'auth/unauthorized-domain' || (e.message||"").includes('unauthorized domain')) {
+                        setAuthError({ type: 'domain', title: "Domínio Bloqueado", msg: "Adicione este domínio no Firebase:", domain: window.location.hostname });
                     } else {
                         showNotification(e.message, 'error'); 
                     }
-                }
-            };
-
-            const handleRegister = async () => {
-                try { 
-                    await createUserWithEmailAndPassword(auth, email, password); 
-                    showNotification("Conta criada com sucesso!", "success");
-                } catch(e) { 
-                    console.error(e);
-                    let msg = "Erro no cadastro.";
-                    if (e.code === 'auth/operation-not-allowed') {
-                        msg = "Registro por E-mail desativado no Firebase Console.";
-                    } else if(e.code === 'auth/email-already-in-use') {
-                        msg = "Este e-mail já está em uso.";
-                    } else if(e.code === 'auth/weak-password') {
-                        msg = "Senha muito fraca (min 6 caracteres).";
-                    }
-                    showNotification(msg, 'error'); 
                 }
             };
 
@@ -548,302 +492,283 @@
                 return mediaItems.filter(item => {
                     const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase());
                     let matchesCategory = true;
-                    
                     if (activeFilter === 'all') matchesCategory = true;
                     else if (activeFilter === 'video') matchesCategory = item.type === 'video';
                     else if (activeFilter === 'image') matchesCategory = item.type === 'image';
                     else if (activeFilter === 'document') matchesCategory = item.type === 'document';
                     else if (activeFilter.startsWith('folder_')) matchesCategory = item.folderId === activeFilter;
-                    
                     return matchesSearch && matchesCategory;
                 });
             }, [mediaItems, searchQuery, activeFilter]);
 
             const currentFolderName = useMemo(() => {
                 if (activeFilter === 'all') return 'Galeria Principal';
-                if (activeFilter === 'image') return 'Imagens';
+                if (activeFilter === 'image') return 'Fotos';
                 if (activeFilter === 'video') return 'Vídeos';
                 if (activeFilter === 'document') return 'Documentos';
                 const folder = folders.find(f => f.id === activeFilter);
-                return folder ? folder.name : 'Galeria';
+                return folder ? folder.name : 'Pasta';
             }, [activeFilter, folders]);
 
-            // --- RENDER ---
+            // --- RENDERIZADO ---
             if (!user) return (
-                <div className="min-h-screen bg-[#0f172a] flex items-center justify-center p-4 relative overflow-hidden">
-                    <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=2072&auto=format&fit=crop')] bg-cover opacity-20 animate-pulse"></div>
-                    
+                <div className="min-h-screen bg-[#020617] flex items-center justify-center p-4 relative overflow-hidden font-sans">
+                    {/* Background Animado */}
+                    <div className="absolute inset-0 bg-gradient-to-br from-indigo-900/20 via-slate-900 to-black animate-pulse-slow"></div>
+                    <div className="absolute top-[-20%] right-[-10%] w-[500px] h-[500px] bg-brand-600/20 rounded-full blur-[120px]"></div>
+                    <div className="absolute bottom-[-10%] left-[-10%] w-[400px] h-[400px] bg-emerald-600/10 rounded-full blur-[100px]"></div>
+
                     {authError && (
-                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fade-in">
-                            <div className="bg-slate-800 p-6 rounded-2xl border border-red-500/50 max-w-md w-full shadow-2xl">
+                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-fade-in">
+                            <div className="bg-slate-900 p-6 rounded-2xl border border-red-500/30 max-w-md w-full shadow-2xl">
                                 <div className="flex items-center gap-3 text-red-400 mb-4">
-                                    <Lock size={32} />
-                                    <h2 className="text-xl font-bold">{authError.title}</h2>
+                                    <Lock size={28} />
+                                    <h2 className="text-lg font-bold">{authError.title}</h2>
                                 </div>
-                                <p className="text-slate-300 mb-4 text-sm font-medium">{authError.msg}</p>
-                                
-                                <div className="bg-black/60 p-4 rounded-lg border border-yellow-500/30 flex justify-between items-center mb-6">
-                                    <code className="text-yellow-400 font-mono text-sm break-all select-all flex-1 mr-2">{authError.domain}</code>
-                                    <button onClick={() => {navigator.clipboard.writeText(authError.domain); showNotification("Copiado!");}} className="bg-slate-700 hover:bg-slate-600 text-white p-2 rounded-lg"><Copy size={16}/></button>
-                                </div>
-                                <button onClick={() => setAuthError(null)} className="w-full bg-slate-700 hover:bg-slate-600 text-white py-3 rounded-xl font-semibold">Fechar</button>
+                                <p className="text-slate-300 mb-4 text-sm">{authError.msg}</p>
+                                {authError.type === 'domain' && <code className="block bg-black/50 p-3 rounded text-yellow-400 text-xs mb-4 select-all">{authError.domain}</code>}
+                                <button onClick={() => setAuthError(null)} className="w-full bg-slate-800 hover:bg-slate-700 text-white py-2 rounded-lg text-sm">Fechar</button>
                             </div>
                         </div>
                     )}
 
-                    <div className="glass p-8 rounded-2xl w-full max-w-md z-10 shadow-2xl relative">
-                        {notification && (
-                            <div className={`absolute top-0 left-0 w-full p-3 text-center text-sm font-medium rounded-t-2xl ${notification.type === 'error' ? 'bg-red-500/80' : 'bg-emerald-500/80'} text-white`}>
-                                {notification.msg}
+                    <div className="glass-panel p-8 rounded-3xl w-full max-w-sm z-10 shadow-2xl border-t border-white/10">
+                        <div className="text-center mb-8">
+                            <div className="inline-flex p-4 bg-gradient-to-tr from-brand-600 to-brand-400 rounded-2xl mb-4 shadow-lg shadow-brand-500/30">
+                                <HardDrive size={32} className="text-white" />
                             </div>
-                        )}
-
-                        <div className="text-center mb-8 mt-4">
-                            <div className="inline-flex p-4 bg-blue-600 rounded-2xl mb-4 shadow-lg shadow-blue-500/50">
-                                <HardDrive size={40} className="text-white" />
-                            </div>
-                            <h1 className="text-3xl font-bold text-white">SmartVault <span className="text-blue-400">Local</span></h1>
-                            <p className="text-slate-400 mt-2">Armazenamento ilimitado no seu dispositivo.</p>
+                            <h1 className="text-2xl font-bold text-white tracking-tight">SmartVault</h1>
+                            <p className="text-slate-400 text-sm mt-1">Sua nuvem privada e ilimitada.</p>
                         </div>
 
                         <div className="space-y-4">
-                            <button onClick={() => handleLogin('google')} className="w-full bg-white hover:bg-gray-100 text-slate-900 py-3 rounded-xl font-medium transition flex justify-center items-center gap-2">
-                                <span className="font-bold">G</span> Entrar com Google
+                            <button onClick={() => handleLogin('google')} className="w-full bg-white hover:bg-slate-50 text-slate-900 py-3 rounded-xl font-semibold transition-all hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2 shadow-lg">
+                                <span className="font-bold text-lg">G</span> Entrar com Google
                             </button>
                             
-                            <div className="flex items-center gap-2"><div className="h-px bg-slate-700 flex-1"></div><span className="text-xs text-slate-500">OU</span><div className="h-px bg-slate-700 flex-1"></div></div>
-
-                            <div className="relative">
-                                <Mail className="absolute left-4 top-3.5 text-slate-500" size={18} />
-                                <input 
-                                    type="email" 
-                                    placeholder="Seu e-mail" 
-                                    className="w-full bg-slate-800/80 border border-slate-700 rounded-xl py-3 pl-11 pr-4 text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all placeholder:text-slate-600" 
-                                    value={email} 
-                                    onChange={e => setEmail(e.target.value)} 
-                                />
-                            </div>
-                            <div className="relative">
-                                <Key className="absolute left-4 top-3.5 text-slate-500" size={18} />
-                                <input 
-                                    type="password" 
-                                    placeholder="Sua senha" 
-                                    className="w-full bg-slate-800/80 border border-slate-700 rounded-xl py-3 pl-11 pr-4 text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all placeholder:text-slate-600" 
-                                    value={password} 
-                                    onChange={e => setPassword(e.target.value)} 
-                                />
+                            <div className="relative flex py-2 items-center">
+                                <div className="flex-grow border-t border-slate-700"></div>
+                                <span className="flex-shrink-0 mx-4 text-slate-500 text-xs">OU EMAIL</span>
+                                <div className="flex-grow border-t border-slate-700"></div>
                             </div>
 
-                            {authMode === 'login' ? (
-                                <>
-                                    <button onClick={() => handleLogin('email')} className="w-full bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-xl font-bold shadow-lg shadow-blue-900/50 transition-all hover:scale-[1.02]">
-                                        Entrar
-                                    </button>
-                                    <p className="text-center text-sm text-slate-400">
-                                        Não tem conta? <button onClick={() => setAuthMode('register')} className="text-blue-400 hover:text-blue-300 font-medium hover:underline">Cadastre-se</button>
-                                    </p>
-                                </>
-                            ) : (
-                                <>
-                                    <button onClick={handleRegister} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-xl font-bold shadow-lg shadow-emerald-900/50 transition-all hover:scale-[1.02]">
-                                        Criar Conta
-                                    </button>
-                                    <p className="text-center text-sm text-slate-400">
-                                        Já tem conta? <button onClick={() => setAuthMode('login')} className="text-blue-400 hover:text-blue-300 font-medium hover:underline">Fazer Login</button>
-                                    </p>
-                                </>
-                            )}
+                            <div className="space-y-3">
+                                <div className="relative group">
+                                    <Mail className="absolute left-4 top-3.5 text-slate-500 group-focus-within:text-brand-400 transition-colors" size={18} />
+                                    <input type="email" placeholder="Email" className="w-full bg-slate-900/50 border border-slate-700 rounded-xl py-3 pl-11 pr-4 text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none transition-all placeholder:text-slate-600 text-sm" value={email} onChange={e => setEmail(e.target.value)} />
+                                </div>
+                                <div className="relative group">
+                                    <Key className="absolute left-4 top-3.5 text-slate-500 group-focus-within:text-brand-400 transition-colors" size={18} />
+                                    <input type="password" placeholder="Senha" className="w-full bg-slate-900/50 border border-slate-700 rounded-xl py-3 pl-11 pr-4 text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none transition-all placeholder:text-slate-600 text-sm" value={password} onChange={e => setPassword(e.target.value)} />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3 pt-2">
+                                <button onClick={() => handleLogin('email')} className="bg-brand-600 hover:bg-brand-500 text-white py-2.5 rounded-xl font-medium transition shadow-lg shadow-brand-900/50">Entrar</button>
+                                <button onClick={() => createUserWithEmailAndPassword(auth, email, password).catch(e => showNotification(e.message, 'error'))} className="bg-slate-800 hover:bg-slate-700 text-white py-2.5 rounded-xl font-medium transition border border-slate-700">Criar</button>
+                            </div>
                         </div>
 
-                        <div className="mt-8 pt-6 border-t border-slate-700/50">
-                            <button onClick={() => handleLogin('anon')} className="w-full text-xs text-slate-500 hover:text-slate-300 transition-colors flex items-center justify-center gap-2">
-                                <User size={14}/> Continuar como Visitante (Offline)
-                            </button>
-                        </div>
+                        <button onClick={() => handleLogin('anon')} className="w-full mt-6 text-xs text-slate-500 hover:text-brand-400 transition-colors flex items-center justify-center gap-2">
+                            <User size={12}/> Continuar como Visitante (Offline)
+                        </button>
                     </div>
                 </div>
             );
 
-            // ... (Resto do componente App igual)
+            // APP LOGADO
             return (
-                <div className="flex h-screen bg-[#0f172a] text-slate-100 font-sans overflow-hidden">
-                    {/* ... (Toasts, Modais, Sidebar, Main e Lightbox são iguais ao anterior, pois o foco era corrigir o login) ... */}
+                <div className="flex h-screen bg-[#020617] text-slate-100 font-sans overflow-hidden">
+                    
+                    {/* NOTIFICAÇÃO TOAST */}
                     {notification && (
-                        <div className={`fixed top-6 right-6 z-50 px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3 animate-fade-in ${notification.type === 'error' ? 'bg-red-500/90' : 'bg-emerald-600/90'} backdrop-blur-md`}>
-                            {notification.type === 'error' ? <AlertTriangle size={20}/> : <ShieldCheck size={20}/>}
-                            <span className="font-medium">{notification.msg}</span>
+                        <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-[100] px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 animate-slide-up backdrop-blur-md border border-white/10 ${notification.type === 'error' ? 'bg-red-500/90' : 'bg-emerald-600/90'}`}>
+                            {notification.type === 'error' ? <AlertTriangle size={18} className="text-white"/> : <Check size={18} className="text-white"/>}
+                            <span className="font-medium text-sm text-white">{notification.msg}</span>
                         </div>
                     )}
-                    {showNewFolderModal && (
-                        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-                            <div className="bg-slate-800 p-6 rounded-2xl w-full max-w-sm border border-slate-700 shadow-2xl animate-fade-in">
-                                <h3 className="text-lg font-bold text-white mb-4">Nova Pasta</h3>
-                                <input autoFocus type="text" placeholder="Ex: Praia, Trabalho..." className="w-full bg-slate-900 border border-slate-600 rounded-xl p-3 text-white mb-4 focus:ring-2 focus:ring-blue-500 outline-none" value={newFolderName} onChange={(e) => setNewFolderName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleCreateFolder()} />
-                                <div className="flex justify-end gap-3">
-                                    <button onClick={() => setShowNewFolderModal(false)} className="px-4 py-2 text-slate-400 hover:text-white">Cancelar</button>
-                                    <button onClick={handleCreateFolder} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium">Criar</button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
+
+                    {/* MODAL CONFIG */}
                     {showSettings && (
-                         <div className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={(e) => e.target === e.currentTarget && setShowSettings(false)}>
-                            <div className="bg-slate-800 rounded-2xl w-full max-w-lg border border-slate-700 shadow-2xl overflow-hidden animate-fade-in">
-                                <div className="p-6 border-b border-slate-700 flex justify-between items-center">
-                                    <h2 className="text-xl font-bold flex items-center gap-2"><Settings className="text-blue-400"/> Configurações</h2>
-                                    <button onClick={() => setShowSettings(false)} className="text-slate-400 hover:text-white"><X size={24}/></button>
+                        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={(e) => e.target === e.currentTarget && setShowSettings(false)}>
+                            <div className="glass-panel w-full max-w-md rounded-2xl overflow-hidden shadow-2xl">
+                                <div className="p-5 border-b border-white/10 flex justify-between items-center bg-slate-900/50">
+                                    <h3 className="font-bold text-lg flex items-center gap-2"><Settings className="text-brand-400" size={20}/> Sistema</h3>
+                                    <button onClick={() => setShowSettings(false)}><X size={20} className="text-slate-400 hover:text-white"/></button>
                                 </div>
                                 <div className="p-6 space-y-6">
-                                    <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-700">
-                                        <div className="flex justify-between items-center mb-2">
-                                            <span className="text-sm text-slate-400">Espaço em Disco</span>
-                                            <span className="text-xs font-mono bg-blue-900/30 text-blue-300 px-2 py-1 rounded">{formatBytes(diskUsage.used)} usados</span>
+                                    <div className="space-y-2">
+                                        <div className="flex justify-between text-sm text-slate-400">
+                                            <span>Armazenamento Local</span>
+                                            <span className="text-brand-300 font-mono">{formatBytes(diskUsage.used)} usados</span>
                                         </div>
-                                        <div className="w-full bg-slate-700 h-2 rounded-full overflow-hidden">
-                                            <div className="bg-blue-500 h-full transition-all duration-1000" style={{width: `${(diskUsage.used / (diskUsage.total || 1)) * 100}%`}}></div>
+                                        <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
+                                            <div className="h-full bg-gradient-to-r from-brand-600 to-accent-500 transition-all duration-1000" style={{width: `${Math.min(100, (diskUsage.used / (diskUsage.total||1))*100)}%`}}></div>
                                         </div>
+                                        <p className="text-[10px] text-slate-500">Seus dados estão seguros no navegador deste dispositivo.</p>
                                     </div>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <button onClick={handleExportBackup} disabled={isExporting} className="flex flex-col items-center justify-center p-4 bg-slate-700 hover:bg-slate-600 rounded-xl border border-slate-600 transition group relative">
-                                            {isExporting ? <RefreshCw className="animate-spin text-emerald-400 mb-2"/> : <Archive size={28} className="text-emerald-400 mb-2 group-hover:scale-110 transition-transform"/>}
-                                            <span className="font-semibold text-sm">Baixar Backup ZIP</span>
-                                            <span className="text-[10px] text-slate-400 text-center">Organizado & Alta Qualidade</span>
+
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <button onClick={handleExportBackup} disabled={isExporting} className="flex flex-col items-center justify-center p-4 bg-slate-800 hover:bg-slate-700 rounded-xl border border-white/5 transition group">
+                                            {isExporting ? <RefreshCw className="animate-spin text-accent-500 mb-2"/> : <DownloadCloud className="text-accent-500 mb-2 group-hover:scale-110 transition-transform" size={24}/>}
+                                            <span className="text-sm font-medium">Backup ZIP</span>
+                                            <span className="text-[10px] text-slate-500 mt-1">Alta Qualidade</span>
                                         </button>
-                                        <label className="flex flex-col items-center justify-center p-4 bg-slate-700 hover:bg-slate-600 rounded-xl border border-slate-600 transition cursor-pointer group relative">
-                                            {isImporting ? <RefreshCw className="animate-spin text-blue-400 mb-2"/> : <UploadCloud size={28} className="text-blue-400 mb-2 group-hover:scale-110 transition-transform"/>}
-                                            <span className="font-semibold text-sm">Restaurar ZIP</span>
-                                            <span className="text-[10px] text-slate-400 text-center">Carregar Backup</span>
+                                        <label className="flex flex-col items-center justify-center p-4 bg-slate-800 hover:bg-slate-700 rounded-xl border border-white/5 transition cursor-pointer group">
+                                            {isImporting ? <RefreshCw className="animate-spin text-brand-400 mb-2"/> : <UploadCloud className="text-brand-400 mb-2 group-hover:scale-110 transition-transform" size={24}/>}
+                                            <span className="text-sm font-medium">Restaurar</span>
+                                            <span className="text-[10px] text-slate-500 mt-1">Carregar ZIP</span>
                                             <input type="file" accept=".zip" className="hidden" onChange={handleImportBackup} disabled={isImporting} />
                                         </label>
                                     </div>
-                                    <div className="pt-4 border-t border-slate-700">
-                                        <button onClick={() => {if(confirm("Apagar TUDO?")) clearDB().then(loadData)}} className="text-red-400 text-sm hover:text-red-300 flex items-center gap-2">
-                                            <Trash2 size={16}/> Apagar Tudo Localmente
-                                        </button>
-                                    </div>
+
+                                    <button onClick={() => {if(confirm("Apagar tudo?")) clearDB().then(loadData)}} className="w-full py-3 text-red-400 hover:bg-red-500/10 rounded-xl text-sm font-medium transition flex items-center justify-center gap-2 border border-dashed border-red-500/30">
+                                        <Trash2 size={16}/> Limpar Banco de Dados Local
+                                    </button>
                                 </div>
                             </div>
                         </div>
                     )}
 
-                    <aside className={`fixed md:relative z-30 w-72 h-full bg-slate-900 border-r border-slate-800 transform transition-transform duration-300 flex flex-col ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
-                        {/* Header Fixo */}
-                        <div className="p-6 flex items-center justify-between flex-shrink-0">
+                    {/* MODAL NOVA/EDITAR PASTA */}
+                    {showNewFolderModal && (
+                        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+                            <div className="glass-panel w-full max-w-sm rounded-2xl p-6 shadow-2xl">
+                                <h3 className="text-lg font-bold text-white mb-1">{editingFolder ? 'Renomear Pasta' : 'Nova Pasta'}</h3>
+                                <p className="text-xs text-slate-400 mb-4">Organize seus arquivos como quiser.</p>
+                                <input 
+                                    autoFocus
+                                    type="text" 
+                                    placeholder="Ex: Viagem 2024" 
+                                    className="w-full bg-slate-900/80 border border-slate-600 rounded-xl p-3 text-white mb-6 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+                                    value={folderNameInput}
+                                    onChange={(e) => setFolderNameInput(e.target.value)}
+                                    onKeyDown={(e) => e.key === 'Enter' && handleSaveFolder()}
+                                />
+                                <div className="flex justify-end gap-3">
+                                    <button onClick={() => setShowNewFolderModal(false)} className="px-4 py-2 text-slate-400 hover:text-white text-sm">Cancelar</button>
+                                    <button onClick={handleSaveFolder} className="px-6 py-2 bg-brand-600 hover:bg-brand-500 text-white rounded-lg font-medium shadow-lg shadow-brand-500/20 text-sm">Salvar</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* SIDEBAR RESPONSIVA */}
+                    <aside className={`fixed md:relative z-40 w-72 h-full glass-sidebar transform transition-transform duration-300 flex flex-col ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
+                        {/* Logo */}
+                        <div className="p-6 flex items-center justify-between">
                             <div className="flex items-center gap-3">
-                                <div className="p-2 bg-blue-600 rounded-lg shadow-lg shadow-blue-900/20"><HardDrive size={20} className="text-white"/></div>
-                                <span className="font-bold text-lg tracking-tight">SmartVault</span>
+                                <div className="p-2 bg-gradient-to-br from-brand-600 to-purple-600 rounded-xl shadow-lg shadow-brand-900/50">
+                                    <Cloud size={20} className="text-white"/>
+                                </div>
+                                <div>
+                                    <h1 className="font-bold text-lg leading-none tracking-tight">SmartVault</h1>
+                                    <span className="text-[10px] text-brand-300 font-medium tracking-widest uppercase">Premium</span>
+                                </div>
                             </div>
                             <button onClick={() => setSidebarOpen(false)} className="md:hidden text-slate-400"><X size={24}/></button>
                         </div>
-                        
-                        {/* Botão Upload Fixo */}
-                        <div className="px-4 mb-6 flex-shrink-0">
-                            <label className="flex items-center justify-center gap-2 w-full bg-white hover:bg-slate-100 text-slate-900 font-semibold py-3 rounded-xl cursor-pointer transition shadow-lg shadow-white/10 active:scale-95 group">
+
+                        {/* Botão Principal */}
+                        <div className="px-4 mb-6">
+                            <label className="group flex items-center justify-center gap-3 w-full bg-gradient-to-r from-brand-600 to-brand-500 hover:from-brand-500 hover:to-brand-400 text-white font-semibold py-3.5 rounded-xl cursor-pointer shadow-lg shadow-brand-900/40 transition-all hover:translate-y-[-1px] active:translate-y-[1px]">
                                 {isUploading ? <RefreshCw className="animate-spin" size={20}/> : <Plus size={20} className="group-hover:rotate-90 transition-transform"/>}
-                                <span>Adicionar Arquivo</span>
-                                <input 
-                                    type="file" 
-                                    multiple 
-                                    className="hidden" 
-                                    onChange={handleFileUpload} 
-                                />
+                                <span>Adicionar Mídia</span>
+                                <input type="file" multiple className="hidden" onChange={handleFileUpload} />
                             </label>
-                            {activeFilter.startsWith('folder_') && <p className="text-[10px] text-center text-slate-500 mt-2">Enviando para: {currentFolderName}</p>}
                         </div>
 
-                        {/* Área de Rolagem Flexível */}
-                        <nav className="px-4 space-y-1 flex-1 overflow-y-auto min-h-0 scrollbar-thin scrollbar-thumb-slate-700">
+                        {/* Navegação */}
+                        <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-1 scrollbar-hide">
+                            <p className="px-2 text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 mt-2">Biblioteca</p>
                             <SidebarItem icon={<Grid size={18}/>} label="Tudo" active={activeFilter==='all'} onClick={()=>setActiveFilter('all')} />
-                            <SidebarItem icon={<ImageIcon size={18}/>} label="Imagens" active={activeFilter==='image'} onClick={()=>setActiveFilter('image')} />
+                            <SidebarItem icon={<ImageIcon size={18}/>} label="Fotos" active={activeFilter==='image'} onClick={()=>setActiveFilter('image')} />
                             <SidebarItem icon={<Video size={18}/>} label="Vídeos" active={activeFilter==='video'} onClick={()=>setActiveFilter('video')} />
                             <SidebarItem icon={<FileText size={18}/>} label="Documentos" active={activeFilter==='document'} onClick={()=>setActiveFilter('document')} />
-                            
-                            <div className="pt-6 pb-2 px-2 flex items-center justify-between text-xs font-semibold text-slate-500 uppercase tracking-wider sticky top-0 bg-slate-900 z-10">
-                                <span>Minhas Pastas</span>
-                                <button onClick={() => setShowNewFolderModal(true)} className="hover:text-white"><FolderPlus size={14}/></button>
-                            </div>
-                            
-                            {folders.map(folder => (
-                                <div key={folder.id} className="group relative flex items-center">
-                                    <SidebarItem 
-                                        icon={<FolderOpen size={18}/>} 
-                                        label={folder.name} 
-                                        active={activeFilter===folder.id} 
-                                        onClick={()=>setActiveFilter(folder.id)} 
-                                    />
-                                    <button onClick={(e) => { e.stopPropagation(); handleDeleteFolder(folder.id); }} className="absolute right-2 p-1.5 text-slate-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"><X size={14}/></button>
-                                </div>
-                            ))}
-                            {folders.length === 0 && <p className="text-xs text-slate-600 px-3 italic">Nenhuma pasta criada</p>}
-                        </nav>
-                        
-                        {/* Rodapé Fixo */}
-                        <div className="flex-shrink-0 bg-slate-900 pt-2 border-t border-slate-800">
-                             <div className="px-4 pb-2">
-                                <p className="px-2 text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Sistema</p>
-                                <SidebarItem icon={<Settings size={18}/>} label="Backup & Config" onClick={()=>setShowSettings(true)} />
+
+                            <div className="flex items-center justify-between px-2 mt-8 mb-2">
+                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Pastas Pessoais</span>
+                                <button onClick={() => openFolderModal()} className="text-slate-500 hover:text-brand-400 transition-colors p-1"><FolderPlus size={14}/></button>
                             </div>
 
-                            <div className="p-4 border-t border-slate-800 bg-slate-900">
-                                <div className="flex items-center gap-3 mb-3">
-                                    <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-500 to-purple-500 flex items-center justify-center text-xs font-bold text-white">
-                                        {user.email ? user.email[0].toUpperCase() : 'U'}
+                            {folders.map(folder => (
+                                <div key={folder.id} className={`group flex items-center justify-between px-3 py-2.5 rounded-lg mb-1 transition-all cursor-pointer ${activeFilter===folder.id ? 'bg-white/10 text-white shadow-inner' : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'}`} onClick={() => setActiveFilter(folder.id)}>
+                                    <div className="flex items-center gap-3 min-w-0">
+                                        <FolderOpen size={18} className={activeFilter===folder.id ? 'text-brand-400' : ''}/>
+                                        <span className="text-sm font-medium truncate">{folder.name}</span>
                                     </div>
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-sm font-medium truncate">{user.email}</p>
-                                        <p className="text-[10px] text-slate-500">Online</p>
+                                    <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button onClick={(e) => {e.stopPropagation(); openFolderModal(folder)}} className="p-1.5 hover:text-white hover:bg-white/10 rounded"><Edit2 size={12}/></button>
+                                        <button onClick={(e) => {e.stopPropagation(); handleDeleteFolder(folder.id, folder.name)}} className="p-1.5 hover:text-red-400 hover:bg-red-500/10 rounded ml-1"><X size={12}/></button>
                                     </div>
                                 </div>
-                                <button onClick={() => signOut(auth)} className="w-full flex items-center justify-center gap-2 text-xs text-slate-400 hover:text-white py-2 border border-slate-700 rounded-lg hover:bg-slate-800 transition"><LogOut size={14}/> Sair</button>
-                            </div>
+                            ))}
+                            {folders.length === 0 && <div className="text-center py-4 border-2 border-dashed border-white/5 rounded-lg"><p className="text-xs text-slate-600">Sem pastas</p></div>}
+                        </div>
+
+                        {/* Footer */}
+                        <div className="p-4 bg-black/20 border-t border-white/5 mt-auto space-y-1">
+                            <button onClick={() => setShowSettings(true)} className="w-full flex items-center gap-3 px-3 py-2 text-slate-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors text-sm">
+                                <Settings size={16}/> Configurações
+                            </button>
+                            <button onClick={() => signOut(auth)} className="w-full flex items-center gap-3 px-3 py-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors text-sm">
+                                <LogOut size={16}/> Sair da Conta
+                            </button>
                         </div>
                     </aside>
 
-                    <main className="flex-1 flex flex-col min-w-0 relative bg-[#0f172a]">
-                        <header className="h-16 border-b border-slate-800 flex items-center justify-between px-4 sticky top-0 bg-[#0f172a]/80 backdrop-blur-xl z-20">
+                    {/* OVERLAY MOBILE */}
+                    {sidebarOpen && <div className="fixed inset-0 bg-black/60 z-30 md:hidden backdrop-blur-sm transition-opacity" onClick={() => setSidebarOpen(false)}></div>}
+
+                    {/* MAIN AREA */}
+                    <main className="flex-1 flex flex-col min-w-0 relative">
+                        {/* Header */}
+                        <header className="h-20 flex items-center justify-between px-6 sticky top-0 z-20 backdrop-blur-xl bg-[#020617]/80 border-b border-white/5">
                             <div className="flex items-center gap-4 flex-1">
-                                <button onClick={() => setSidebarOpen(true)} className="md:hidden text-slate-400"><Menu size={24}/></button>
-                                <div className="relative w-full max-w-md hidden sm:block">
-                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16}/>
-                                    <input type="text" placeholder="Buscar..." className="w-full bg-slate-800 border-none rounded-full py-2 pl-10 pr-4 text-sm text-slate-200 focus:ring-2 focus:ring-blue-500/50 outline-none transition-all placeholder:text-slate-600" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+                                <button onClick={() => setSidebarOpen(true)} className="md:hidden p-2 text-slate-300 hover:bg-white/10 rounded-lg"><Menu size={24}/></button>
+                                <div className="relative w-full max-w-lg hidden sm:block group">
+                                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-brand-400 transition-colors" size={18}/>
+                                    <input type="text" placeholder="Pesquisar arquivos..." className="w-full bg-slate-900 border border-slate-700 rounded-full py-2.5 pl-12 pr-6 text-sm text-slate-200 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none transition-all placeholder:text-slate-600 shadow-sm" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
                                 </div>
                             </div>
-                            <div className="flex items-center gap-2">
-                                <div className="bg-slate-800 rounded-lg p-1 flex">
-                                    <button onClick={()=>setViewMode('grid')} className={`p-2 rounded-md transition ${viewMode==='grid' ? 'bg-slate-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}><Grid size={18}/></button>
-                                    <button onClick={()=>setViewMode('list')} className={`p-2 rounded-md transition ${viewMode==='list' ? 'bg-slate-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}><List size={18}/></button>
-                                </div>
+                            <div className="flex items-center gap-2 bg-slate-900 p-1 rounded-lg border border-slate-700">
+                                <button onClick={()=>setViewMode('grid')} className={`p-2 rounded-md transition ${viewMode==='grid' ? 'bg-slate-700 text-white shadow' : 'text-slate-400 hover:text-white'}`}><Grid size={18}/></button>
+                                <button onClick={()=>setViewMode('list')} className={`p-2 rounded-md transition ${viewMode==='list' ? 'bg-slate-700 text-white shadow' : 'text-slate-400 hover:text-white'}`}><List size={18}/></button>
                             </div>
                         </header>
 
-                        <div className="flex-1 overflow-y-auto p-4 md:p-6 scrollbar-thin scrollbar-thumb-slate-700" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); handleFileUpload(e); }}>
+                        {/* Conteúdo */}
+                        <div className="flex-1 overflow-y-auto p-4 md:p-8 scrollbar-thin" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); handleFileUpload(e); }}>
                             {mediaItems.length === 0 ? (
-                                <div className="h-full flex flex-col items-center justify-center text-slate-500 pb-20">
-                                    <div className="w-24 h-24 bg-slate-800 rounded-full flex items-center justify-center mb-6 animate-bounce">
-                                        <Cloud size={48} className="text-slate-600" />
+                                <div className="h-full flex flex-col items-center justify-center text-slate-500 pb-20 animate-fade-in">
+                                    <div className="w-32 h-32 bg-slate-900/50 rounded-full flex items-center justify-center mb-6 shadow-xl border border-white/5">
+                                        <Cloud size={64} className="text-slate-700" />
                                     </div>
-                                    <h3 className="text-xl font-semibold text-slate-300">Nenhum arquivo ainda</h3>
-                                    <p className="max-w-xs text-center mt-2 text-slate-500">Seus arquivos ficam salvos neste dispositivo.</p>
-                                    <button onClick={()=>document.querySelector('input[type="file"]').click()} className="mt-6 text-blue-400 hover:text-blue-300 font-medium">Upload Agora</button>
+                                    <h3 className="text-2xl font-bold text-slate-300 mb-2">Tudo limpo por aqui</h3>
+                                    <p className="max-w-xs text-center text-slate-500 mb-8">Seus arquivos seguros, com qualidade original e salvos localmente.</p>
+                                    <label className="px-8 py-3 bg-brand-600 hover:bg-brand-500 text-white rounded-full font-medium cursor-pointer shadow-lg shadow-brand-900/40 transition hover:-translate-y-1">
+                                        Fazer Upload Agora
+                                        <input type="file" multiple className="hidden" onChange={handleFileUpload} />
+                                    </label>
                                 </div>
                             ) : (
                                 <>
-                                    <div className="flex items-end justify-between mb-6">
+                                    <div className="flex items-end justify-between mb-8">
                                         <div>
-                                            <h2 className="text-2xl font-bold text-white capitalize flex items-center gap-2">
-                                                {activeFilter.startsWith('folder_') && <FolderOpen className="text-blue-500"/>}
+                                            <h2 className="text-3xl font-bold text-white tracking-tight flex items-center gap-3">
+                                                {activeFilter.startsWith('folder_') ? <FolderOpen className="text-brand-400"/> : null}
                                                 {currentFolderName}
                                             </h2>
-                                            <p className="text-sm text-slate-500 mt-1">{filteredItems.length} itens • {formatBytes(filteredItems.reduce((a,b) => a + (b.size||0), 0))} armazenados</p>
+                                            <p className="text-slate-500 mt-2 text-sm font-medium">{filteredItems.length} itens • {formatBytes(filteredItems.reduce((a,b) => a + (b.size||0), 0))} armazenados</p>
                                         </div>
                                     </div>
 
                                     {filteredItems.length === 0 ? (
-                                        <div className="text-center py-20 text-slate-600"><p>Nenhum item encontrado.</p></div>
+                                        <div className="text-center py-20 text-slate-600"><p>Nenhum item encontrado nesta pasta.</p></div>
                                     ) : viewMode === 'grid' ? (
-                                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 md:gap-6">
                                             {filteredItems.map(item => (
-                                                <div key={item.id} onClick={() => setSelectedItem(item)} className="aspect-square rounded-2xl overflow-hidden cursor-pointer shadow-lg hover:shadow-2xl hover:scale-[1.02] transition-all duration-300 border border-slate-700/50">
+                                                <div key={item.id} onClick={() => setSelectedItem(item)} className="glass-card aspect-square rounded-2xl overflow-hidden cursor-pointer">
                                                     <MediaThumbnail item={item} viewMode="grid" />
                                                 </div>
                                             ))}
@@ -851,11 +776,14 @@
                                     ) : (
                                         <div className="space-y-2">
                                             {filteredItems.map(item => (
-                                                <div key={item.id} onClick={() => setSelectedItem(item)} className="flex items-center gap-4 p-3 bg-slate-800/40 hover:bg-slate-800 rounded-xl border border-transparent hover:border-slate-700 cursor-pointer transition-all group">
+                                                <div key={item.id} onClick={() => setSelectedItem(item)} className="flex items-center gap-4 p-3 bg-slate-900/40 hover:bg-slate-800 rounded-xl border border-white/5 hover:border-brand-500/30 cursor-pointer transition-all group">
                                                     <MediaThumbnail item={item} viewMode="list" />
                                                     <div className="flex-1 min-w-0">
                                                         <h4 className="text-white font-medium truncate">{item.name}</h4>
-                                                        <p className="text-sm text-slate-500">{new Date(item.createdAt).toLocaleDateString()} • {formatBytes(item.size)}</p>
+                                                        <div className="flex items-center gap-2 mt-1">
+                                                            <span className="px-1.5 py-0.5 bg-slate-800 rounded text-[10px] text-slate-400">{item.mimeType || 'Arquivo'}</span>
+                                                            <span className="text-xs text-slate-500">• {formatBytes(item.size)}</span>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             ))}
@@ -868,80 +796,76 @@
 
                     {/* LIGHTBOX / VIEWER */}
                     {selectedItem && (
-                        <div className="fixed inset-0 z-50 bg-black/95 backdrop-blur-xl flex flex-col animate-fade-in">
-                             <div className="flex items-center justify-between p-4 bg-gradient-to-b from-black/50 to-transparent absolute top-0 w-full z-10">
-                                <span className="text-white/80 text-sm truncate max-w-xs">{selectedItem.name}</span>
+                        <div className="fixed inset-0 z-[60] bg-black/95 backdrop-blur-xl flex flex-col animate-fade-in">
+                             <div className="flex items-center justify-between p-4 bg-gradient-to-b from-black/80 to-transparent absolute top-0 w-full z-10">
+                                <div className="flex items-center gap-3 overflow-hidden">
+                                    <div className="p-2 bg-white/10 rounded-full"><FileText size={16}/></div>
+                                    <div className="flex flex-col min-w-0">
+                                        <span className="text-white text-sm font-medium truncate max-w-[200px] sm:max-w-md">{selectedItem.name}</span>
+                                        <span className="text-xs text-slate-400">{formatBytes(selectedItem.size)} • Qualidade Original</span>
+                                    </div>
+                                </div>
                                 <div className="flex gap-2">
-                                    <button onClick={() => handleDelete(selectedItem.id)} className="p-2 text-white/70 hover:text-red-400 bg-white/10 rounded-full transition"><Trash2 size={20}/></button>
-                                    <button onClick={() => setSelectedItem(null)} className="p-2 text-white/70 hover:text-white bg-white/10 rounded-full transition"><X size={20}/></button>
+                                    <button onClick={() => { if(confirm("Excluir?")) { deleteFromDB(selectedItem.id); setSelectedItem(null); loadData(); showNotification("Excluído"); }}} className="p-3 text-white/70 hover:text-red-400 bg-white/5 hover:bg-white/10 rounded-full transition"><Trash2 size={20}/></button>
+                                    <button onClick={() => setSelectedItem(null)} className="p-3 text-white/70 hover:text-white bg-white/5 hover:bg-white/10 rounded-full transition"><X size={20}/></button>
                                 </div>
                             </div>
                             
-                            <div className="flex-1 flex flex-col items-center justify-center p-4">
+                            <div className="flex-1 flex flex-col items-center justify-center p-4 overflow-hidden">
                                 {selectedItem.type === 'image' ? (
-                                    <MediaThumbnail item={selectedItem} viewMode="grid" />
+                                    <MediaThumbnail item={selectedItem} viewMode="lightbox" /> // Reusing logic but simpler
                                 ) : selectedItem.type === 'video' ? (
-                                    // Para vídeo no lightbox, precisamos criar URL temporária
                                     (() => {
                                         const url = selectedItem.data instanceof Blob ? URL.createObjectURL(selectedItem.data) : selectedItem.data;
-                                        return <video src={url} controls autoPlay className="max-w-full max-h-[70vh] rounded shadow-2xl" />;
+                                        return <video src={url} controls autoPlay className="max-w-full max-h-[80vh] rounded-lg shadow-2xl bg-black" />;
                                     })()
                                 ) : (
-                                    // Document View
-                                    <div className="flex flex-col items-center justify-center bg-slate-800 p-10 rounded-3xl border border-slate-700">
-                                        <div className="bg-slate-700 p-6 rounded-2xl mb-4">
-                                            <FileText size={64} className="text-blue-400"/>
+                                    <div className="flex flex-col items-center justify-center bg-slate-900 p-10 rounded-3xl border border-white/10 shadow-2xl max-w-sm text-center">
+                                        <div className="bg-slate-800 p-6 rounded-full mb-6">
+                                            <FileText size={48} className="text-brand-400"/>
                                         </div>
-                                        <h3 className="text-xl font-bold text-white mb-2 max-w-md text-center">{selectedItem.name}</h3>
-                                        <p className="text-slate-400 mb-6">{formatBytes(selectedItem.size)} • {selectedItem.mimeType || 'Documento'}</p>
-                                        <a 
-                                            href={selectedItem.data instanceof Blob ? URL.createObjectURL(selectedItem.data) : selectedItem.data} 
-                                            download={selectedItem.name} 
-                                            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-8 py-3 rounded-full font-bold shadow-lg shadow-blue-900/40 transition hover:-translate-y-1"
-                                        >
-                                            <DownloadCloud size={20}/> Baixar Arquivo
-                                        </a>
+                                        <h3 className="text-xl font-bold text-white mb-2 break-all">{selectedItem.name}</h3>
+                                        <p className="text-slate-400 mb-8 text-sm">Visualização não disponível para este formato.</p>
                                     </div>
                                 )}
                             </div>
 
-                            {selectedItem.type !== 'document' && (
-                                <div className="p-6 pb-8 bg-gradient-to-t from-black/80 to-transparent">
-                                    <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                                        {folders.length > 0 && (
-                                            <div className="relative group">
-                                                <div className="flex items-center gap-2 bg-slate-800 text-white px-4 py-2 rounded-full cursor-pointer hover:bg-slate-700">
-                                                    <Move size={16} />
-                                                    <span className="text-sm">Mover para...</span>
-                                                </div>
-                                                <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 w-40 bg-slate-800 rounded-lg shadow-xl overflow-hidden hidden group-hover:block border border-slate-700">
-                                                    <button onClick={() => handleMoveItem(selectedItem, null)} className="w-full text-left px-4 py-2 text-xs hover:bg-slate-700 text-slate-300">Galeria Principal</button>
-                                                    {folders.map(f => (
-                                                        <button key={f.id} onClick={() => handleMoveItem(selectedItem, f.id)} className="w-full text-left px-4 py-2 text-xs hover:bg-slate-700 text-white truncate">{f.name}</button>
-                                                    ))}
-                                                </div>
+                            <div className="p-6 pb-8 bg-gradient-to-t from-black/90 to-transparent">
+                                <div className="flex flex-col sm:flex-row items-center justify-center gap-4 max-w-2xl mx-auto">
+                                    {folders.length > 0 && (
+                                        <div className="relative group w-full sm:w-auto">
+                                            <div className="flex items-center justify-center gap-2 bg-slate-800 text-white px-6 py-3 rounded-xl cursor-pointer hover:bg-slate-700 border border-white/10 transition-colors w-full">
+                                                <Move size={18} />
+                                                <span className="text-sm font-medium">Mover para...</span>
                                             </div>
-                                        )}
+                                            <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 w-56 bg-slate-900 rounded-xl shadow-2xl overflow-hidden hidden group-hover:block border border-white/10 z-20">
+                                                <button onClick={() => handleMoveItem(selectedItem, null)} className="w-full text-left px-4 py-3 text-xs hover:bg-slate-800 text-slate-300 border-b border-white/5">Galeria Principal</button>
+                                                {folders.map(f => (
+                                                    <button key={f.id} onClick={() => handleMoveItem(selectedItem, f.id)} className="w-full text-left px-4 py-3 text-xs hover:bg-slate-800 text-white truncate">{f.name}</button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
 
-                                        <a 
-                                            href={selectedItem.data instanceof Blob ? URL.createObjectURL(selectedItem.data) : selectedItem.data} 
-                                            download={selectedItem.name} 
-                                            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-full font-medium shadow-lg shadow-blue-900/40 transition hover:-translate-y-1"
-                                        >
-                                            <DownloadCloud size={20}/> Baixar
-                                        </a>
-                                    </div>
+                                    <a 
+                                        href={selectedItem.data instanceof Blob ? URL.createObjectURL(selectedItem.data) : selectedItem.data} 
+                                        download={selectedItem.name} 
+                                        className="flex items-center justify-center gap-2 bg-brand-600 hover:bg-brand-500 text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-brand-900/40 transition hover:-translate-y-1 w-full sm:w-auto"
+                                    >
+                                        <DownloadCloud size={20}/> Baixar Original
+                                    </a>
                                 </div>
-                            )}
+                            </div>
                         </div>
                     )}
                 </div>
             );
         }
 
+        // Reusing basic SidebarItem for cleaner code
         function SidebarItem({ icon, label, active, onClick }) {
             return (
-                <button onClick={onClick} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg mb-1 transition-all ${active ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'}`}>
+                <button onClick={onClick} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg mb-1 transition-all ${active ? 'bg-gradient-to-r from-brand-600 to-brand-700 text-white shadow-lg shadow-brand-900/20' : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'}`}>
                     {React.cloneElement(icon, { size: 18, className: active ? 'text-white' : '' })}
                     <span className="text-sm font-medium truncate">{label}</span>
                 </button>
